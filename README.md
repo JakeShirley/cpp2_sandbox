@@ -12,7 +12,8 @@ Requires CMake 3.23+ and a C++20 compiler.
 ### VS Code
 - Open workspace in VS Code
 - Install suggested extensions
-- Select "C++ Launch" in the "Run and Debug" tab
+- Run `CMake: Configure` command from the command palette to pick which CMake kit to use (CTRL+P -> `Cmake: Configure`)
+- Select "C++ Launch" in the "Run and Debug" tab and run the `"main"` project
 
 ### Visual Studio
 - Create `/build` (`mkdir build`)
