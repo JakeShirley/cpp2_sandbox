@@ -24,3 +24,5 @@ Requires CMake 3.23+ and a C++20 compiler.
 
 ## Structure
 cpp2 code goes in `src`
+
+The project is currently hardcoded to only include `main.cpp2`.
