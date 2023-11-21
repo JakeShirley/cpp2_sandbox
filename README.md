@@ -1,6 +1,6 @@
 # cppfront playground
 
-This is a small sample project that bootstraps cppfront and provides a playground for running `cpp2` code.
+This is a small sample project that bootstraps [cppfront](https://github.com/hsutter/cppfront) and provides a playground for running `cpp2` code.
 
 ## Building
 
