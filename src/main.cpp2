@@ -1,103 +1,190 @@
-copyDigitString: (input: std::string_view, inout destination: int) = {
-    for input do (c) {
-        if c >= '0' && c <= '9' {
-            destination *= 10;
-            destination += (c - '0');
+
+MappedRange : @struct type = {
+    sourceStart: int64_t = 0;
+    destinationStart: int64_t = 0;
+    count: int64_t = 0;
+}
+
+MappingCollection : type = {
+    public from: std::string = ();
+    public to: std::string = ();
+    public mappings: std::vector<MappedRange> = ();
+
+    getMappedId: (this, sourceId: int64_t) -> std::optional<int64_t> = {
+        for mappings do (mapping) {
+            if sourceId >= mapping.sourceStart && sourceId < mapping.sourceStart + mapping.count {
+                result := mapping.destinationStart + (sourceId - mapping.sourceStart);
+                return result;
+            }
+        }
+
+        return std::nullopt;
+    }
+
+    addMapping: (inout this, input: std::string) = {
+        mappingRegex: const std::regex = (R"((\d+) (\d+) (\d+))");
+        mappingMatch: std::smatch = ();
+
+        if (std::regex_search(input, mappingMatch, mappingRegex)) {
+            newMapping: MappedRange = ();
+            
+            sinner: std::stringstream = ();
+            sinner << mappingMatch[2].str().c_str();
+            sinner >> newMapping.sourceStart;
+
+            sinner.clear();
+            sinner.str(mappingMatch[1].str().c_str());
+            sinner >> newMapping.destinationStart;
+
+            sinner.clear();
+            sinner.str(mappingMatch[3].str().c_str());
+            sinner >> newMapping.count;
+
+            this.mappings.push_back(newMapping);
+
+        } else {
+            std::cout << "Failed to regex match in addMapping" << std::endl;
         }
     }
 }
 
-Card : type = {
-    public winningNumbers: std::array<int, 10> = ();
-    actualNumbers: std::array<int, 25> = ();
+parseSeedsPart1: (input: std::string) -> std::vector<int> = {
+    seeds: std::vector<int> = ();
+    seedRegex: const std::regex = (R"((\d+))");
+    seedRegex.flags(); // seedRegex is being marked as unused
 
-    calculateWinningNumbers: (this) -> int = {
-        winningNumberCount: int = 0;
-        for actualNumbers do (actualNumber) {
-            for winningNumbers do (winningNumber) {
-                if actualNumber == winningNumber {
-                    winningNumberCount++;
-                    break;
-                }
-            }
-        }
-        return winningNumberCount;
+    seedMatches: std::smatch = ();
+    searchStart: std::string::const_iterator = (input.cbegin());
+    while(std::regex_search(searchStart, input.cend(), seedMatches, seedRegex)) {
+        seedStr: std::string = seedMatches[0].str().c_str();
+
+        sinner: std::stringstream = ();
+        sinner << seedStr.c_str();
+
+        sinnerOutput: int = 0;
+        sinner >> sinnerOutput;
+        seeds.push_back(sinnerOutput);
+
+        searchStart = seedMatches.suffix().first;
     }
 
-    operator=: (out this, line: std::string_view) = {
-        for std::views::iota(0, 10) do (i) {
-            copyDigitString(line.substr(10 + (i * 3), 2), this.winningNumbers[i]);
-        }
-
-        for std::views::iota(0, 25) do (i) {
-            copyDigitString(line.substr(41 + (i * 3), 3), this.actualNumbers[i]);
-        }
-
-        //std::regex r(R"((\b[[:alpha:]]+\b)|(\b\d+\b))");
-        /*
-        parsingRegex: std::regex = std::regex(R"(Card\s+(\d+):\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+\|\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+))");
-
-        match: std::smatch = ();
-
-        if (std::regex_search(line, match, parsingRegex)) {
-            std::cout << match.size() << " sub-match found!";
-            for match do (submatch) {
-                std::cout << "\nSubmatch: " << submatch;
-            }
-
-            this.winningNumbers = std::array<int, 10> { 
-                std::atoi(match[1]).c_str(),
-                std::atoi(match[2]).c_str(),
-                std::atoi(match[3]).c_str(),
-                std::atoi(match[4]).c_str(),
-                std::atoi(match[5]).c_str(),
-                std::atoi(match[6]).c_str(),
-                std::atoi(match[7]).c_str(),
-                std::atoi(match[8]).c_str(),
-                std::atoi(match[9]).c_str(),
-                std::atoi(match[10]).c_str()
-            };
-        }
-        */
-    }
+    return seeds;
 }
+
+parseSeedsPart2: (input: std::string) -> std::vector<MappedRange> = {
+    seeds: std::vector<MappedRange> = ();
+    seedRegex: const std::regex = (R"((\d+) (\d+))");
+    seedRegex.flags(); // seedRegex is being marked as unused
+
+    seedMatches: std::smatch = ();
+    searchStart: std::string::const_iterator = (input.cbegin());
+    while(std::regex_search(searchStart, input.cend(), seedMatches, seedRegex)) {
+        seedRangeStr: std::string = seedMatches[0].str().c_str();
+
+        sinner: std::stringstream = ();
+        sinner << seedRangeStr.substr(0, seedRangeStr.find(' '));
+
+        seedStart: int64_t = 0;
+        seedRange: int64_t = 0;
+        sinner >> seedStart;
+
+        sinner.clear();
+        sinner.str(seedRangeStr.substr(seedRangeStr.find(' ') + 1));
+        sinner >> seedRange;
+
+        range: MappedRange = ();
+        range.sourceStart = seedStart;
+        range.destinationStart = seedStart;
+        range.count = seedRange;
+
+        seeds.push_back(range);
+
+        searchStart = seedMatches.suffix().first;
+    }
+
+    return seeds;
+}
+
+getNextValueAndCategory: (value: int64_t, category: std::string, mappings: std::vector<std::unique_ptr<MappingCollection>>) -> std::optional<std::pair<int64_t, std::string>> = {
+    for mappings do (mapping) {
+        if (mapping*.from == category) {
+            mappedId := mapping*.getMappedId(value);
+            if mappedId.has_value() {
+                return std::make_pair(mappedId.value(), mapping*.to);
+            } else { // No entry, mapped 1:1
+                return std::make_pair(value, mapping*.to);
+            }
+        }
+    }
+
+    return std::nullopt;
+
+}
+
 main: () -> int = {
-    input: std::ifstream = std::ifstream("inputs/day4.txt");
+    input: std::ifstream = std::ifstream("inputs/day5.txt");
     if (!input.is_open()) {
         std::cout << "Failed to open file" << std::endl;
         return -1;
     }
 
+    mappingRegex: const std::regex = (R"(([a-z]+)-to-([a-z]+) map:)");
     
-    lineValue: std::string = ();
-    cards: std::vector<std::unique_ptr<Card>> = ();
-    while (std::getline(input, lineValue)) {
-       cards.push_back(new<Card>(lineValue));
+    inputStr: std::string = ();
+    std::getline(input, inputStr);
+
+    seeds := parseSeedsPart2(inputStr);
+    seeds.size();
+    
+    allMappings: std::vector<std::unique_ptr<MappingCollection>> = ();
+    currentMapCollection: std::unique_ptr<MappingCollection> = ();
+    while (std::getline(input, inputStr)) {
+        if (inputStr.empty()) {
+            if currentMapCollection {
+                allMappings.push_back(move(currentMapCollection));
+            }
+            continue;
+        } else if (currentMapCollection == nullptr) {
+            mappingMatch: std::smatch = ();
+
+            if (std::regex_search(inputStr, mappingMatch, mappingRegex)) {
+                currentMapCollection = new<MappingCollection>();
+                currentMapCollection*.from = mappingMatch[1].str();
+                currentMapCollection*.to = mappingMatch[2].str();
+            } else {
+                std::cout << "Failed to regex match" << std::endl;
+            }
+        } else if (currentMapCollection) {
+            currentMapCollection*.addMapping(inputStr);
+        } else {
+            std::cout << "BAD STUFF MAN" << std::endl;
+        }
     }
 
-    totalWinningScore := 0;
-    cardCounts: std::vector<int> = ();
-    cardCounts.resize(cards.size(), 1);
+    if currentMapCollection {
+        allMappings.push_back(move(currentMapCollection));
+    }
 
-    totalCards := 0;
-    currentCardIndex := 0;
-    for cards do (card) {
-        winningNumbers := card*.calculateWinningNumbers();
-        if winningNumbers > 0 {
-            totalWinningScore += 1 << (winningNumbers - 1);
+    lowestLocation: int64_t = std::numeric_limits<int64_t>::max();
+    for seeds do (seedRange) {
+        for std::views::iota(seedRange.sourceStart, seedRange.sourceStart + seedRange.count) do(seedSrc) {
+            seed: int64_t = seedSrc;
+            nextValues: std::optional<std::pair<int64_t, std::string>> = std::pair<int64_t, std::string>(seed, "seed");
+            while (nextValues) {
+                newValues := getNextValueAndCategory(nextValues*.first, nextValues*.second, allMappings);
 
-            for std::views::iota(0, winningNumbers) do (i) {
-                cardCounts[currentCardIndex + 1 + i] += cardCounts[currentCardIndex];
+                if newValues.has_value() && newValues*.second == "location" {
+                    lowestLocation = std::min(newValues*.first, lowestLocation);
+                    //std::cout << "Found location: " << newValues*.first << std::endl;
+                    break;
+                }
+
+                nextValues = newValues;
             }
         }
-        
-        totalCards += cardCounts[currentCardIndex];
-        currentCardIndex++;
     }
-
-    std::cout << "Total winning score: " << totalWinningScore << std::endl;
-    std::cout << "Total cards: " << totalCards << std::endl;
-
-    //std::cout << "Total value: " << totalNumbersCount << " from " << numbersAdded.size() << " numbers" << std::endl;
+    
+    std::cout << "Lowest location: " << lowestLocation << std::endl;
+    std::cout << "Total mappings: " << allMappings.size() << std::endl;
     //std::cout << "Gears: " << totalGears << " with gear ratio of " << totalGearRatio << std::endl;
 }
