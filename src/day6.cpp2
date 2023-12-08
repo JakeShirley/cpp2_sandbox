@@ -1,0 +1,82 @@
+
+Race : @struct type = {
+    duration: uint64_t = ();
+    recordDistance: uint64_t = ();
+
+    getDistanceForHoldTime: (this, holdTime: uint64_t) -> uint64_t = {
+        return holdTime * (this.duration - holdTime);
+    }
+
+    getNumberOfWaysToWin: (this) -> uint64_t = {
+        result: uint64_t = 0;
+
+        for std::views::iota(0ull, this.duration + 1) do (holdTime) {
+            distance := this.getDistanceForHoldTime(holdTime);
+            if (distance > this.recordDistance) {
+                result += 1;
+            }
+        }
+
+        return result;
+    }
+}
+
+part1: () = {
+    races: std::vector<Race> = ();
+    races.resize(4);
+
+   /*
+Time:        51     69     98     78
+Distance:   377   1171   1224   1505
+    */
+
+    races[0].duration = 51;
+    races[1].duration = 69;
+    races[2].duration = 98;
+    races[3].duration = 78;
+
+    races[0].recordDistance = 377;
+    races[1].recordDistance = 1171;
+    races[2].recordDistance = 1224;
+    races[3].recordDistance = 1505;
+
+    /* Test input
+Time:      7  15   30
+Distance:  9  40  200
+    */
+/*
+    races[0].duration = 7;
+    races[1].duration = 15;
+    races[2].duration = 30;
+
+    races[0].recordDistance = 9;
+    races[1].recordDistance = 40;
+    races[2].recordDistance = 1224;
+*/
+    runningTotal: int = 1;
+    for races do (race) {
+        waysToWin := race.getNumberOfWaysToWin();
+        runningTotal *= waysToWin;
+    }
+    
+    std::cout << "Total Ways Multiplied: " << runningTotal << std::endl;
+}
+
+
+part2: () = {
+    
+   /*
+Time:        51     69     98     78
+Distance:   377   1171   1224   1505
+    */
+    race: Race = ();
+    race.duration = 51699878;
+    race.recordDistance = 377117112241505;
+    
+    std::cout << "Total Ways To Win: " << race.getNumberOfWaysToWin() << std::endl;
+}
+
+main: () -> int = {
+    //part1();
+    part2();
+}

@@ -1,190 +1,183 @@
 
-MappedRange : @struct type = {
-    sourceStart: int64_t = 0;
-    destinationStart: int64_t = 0;
-    count: int64_t = 0;
+getCardValue: (input: char) -> int64_t = {
+    if input == '2' { return 2; } 
+    if input == '3' { return 3; }
+    if input == '4' { return 4; } 
+    if input == '5' { return 5; } 
+    if input == '6' { return 6; } 
+    if input == '7' { return 7; }
+    if input == '8' { return 8; }
+    if input == '9' { return 9; } 
+    if input == 'T' { return 10; } 
+    if input == 'J' { return 1; }  // Part 2, J is now a joker and worth 1
+    if input == 'Q' { return 12; }
+    if input == 'K' { return 13; } 
+    if input == 'A' { return 14; } 
+
+    std::cout << "unknown card type: " << input << std::endl;
+    return 0;
 }
 
-MappingCollection : type = {
-    public from: std::string = ();
-    public to: std::string = ();
-    public mappings: std::vector<MappedRange> = ();
-
-    getMappedId: (this, sourceId: int64_t) -> std::optional<int64_t> = {
-        for mappings do (mapping) {
-            if sourceId >= mapping.sourceStart && sourceId < mapping.sourceStart + mapping.count {
-                result := mapping.destinationStart + (sourceId - mapping.sourceStart);
-                return result;
-            }
-        }
-
-        return std::nullopt;
-    }
-
-    addMapping: (inout this, input: std::string) = {
-        mappingRegex: const std::regex = (R"((\d+) (\d+) (\d+))");
-        mappingMatch: std::smatch = ();
-
-        if (std::regex_search(input, mappingMatch, mappingRegex)) {
-            newMapping: MappedRange = ();
-            
-            sinner: std::stringstream = ();
-            sinner << mappingMatch[2].str().c_str();
-            sinner >> newMapping.sourceStart;
-
-            sinner.clear();
-            sinner.str(mappingMatch[1].str().c_str());
-            sinner >> newMapping.destinationStart;
-
-            sinner.clear();
-            sinner.str(mappingMatch[3].str().c_str());
-            sinner >> newMapping.count;
-
-            this.mappings.push_back(newMapping);
-
-        } else {
-            std::cout << "Failed to regex match in addMapping" << std::endl;
-        }
-    }
+isFullHouse: (input: std::string_view) -> bool = {
+    return ((input[0] == input[1] == input[2]) && (input[3] == input[4]))
+        || ((input[0] == input[1]) && (input[2] == input[3] == input[4]))
+        || ((input[0] == 'J') && (input[1] == input[2] == input[3]))
+        || ((input[0] == 'J') && (input[2] == input[3] == input[4]))
+        || ((input[0] == 'J' == input[1] == 'J') && (input[2] == input[3]))
+        || ((input[0] == 'J' == input[1] == 'J') && (input[3] == input[4]))
+        || ((input[0] == 'J' == input[1] == input[2] == 'J'))
+    ;
 }
 
-parseSeedsPart1: (input: std::string) -> std::vector<int> = {
-    seeds: std::vector<int> = ();
-    seedRegex: const std::regex = (R"((\d+))");
-    seedRegex.flags(); // seedRegex is being marked as unused
-
-    seedMatches: std::smatch = ();
-    searchStart: std::string::const_iterator = (input.cbegin());
-    while(std::regex_search(searchStart, input.cend(), seedMatches, seedRegex)) {
-        seedStr: std::string = seedMatches[0].str().c_str();
-
-        sinner: std::stringstream = ();
-        sinner << seedStr.c_str();
-
-        sinnerOutput: int = 0;
-        sinner >> sinnerOutput;
-        seeds.push_back(sinnerOutput);
-
-        searchStart = seedMatches.suffix().first;
-    }
-
-    return seeds;
+isFiveOfAKind: (input: std::string_view) -> bool = {
+    return (input[0] == input[1] == input[2] == input[3] == input[4])
+        || (input[0] == 'J' && input[1] == input[2] == input[3] == input[4])
+        || (input[0] == input[1] == 'J' && input[2] == input[3] == input[4])
+        || (input[0] == input[1] == input[2] == 'J' && input[3] == input[4])
+        || (input[0] == input[1] == input[2] == input[3] == 'J');
 }
 
-parseSeedsPart2: (input: std::string) -> std::vector<MappedRange> = {
-    seeds: std::vector<MappedRange> = ();
-    seedRegex: const std::regex = (R"((\d+) (\d+))");
-    seedRegex.flags(); // seedRegex is being marked as unused
-
-    seedMatches: std::smatch = ();
-    searchStart: std::string::const_iterator = (input.cbegin());
-    while(std::regex_search(searchStart, input.cend(), seedMatches, seedRegex)) {
-        seedRangeStr: std::string = seedMatches[0].str().c_str();
-
-        sinner: std::stringstream = ();
-        sinner << seedRangeStr.substr(0, seedRangeStr.find(' '));
-
-        seedStart: int64_t = 0;
-        seedRange: int64_t = 0;
-        sinner >> seedStart;
-
-        sinner.clear();
-        sinner.str(seedRangeStr.substr(seedRangeStr.find(' ') + 1));
-        sinner >> seedRange;
-
-        range: MappedRange = ();
-        range.sourceStart = seedStart;
-        range.destinationStart = seedStart;
-        range.count = seedRange;
-
-        seeds.push_back(range);
-
-        searchStart = seedMatches.suffix().first;
-    }
-
-    return seeds;
+isFourOfAKind: (input: std::string_view) -> bool = {
+    return (input[0] == input[1] == input[2] == input[3]) 
+        || (input[1] == input[2] == input[3] == input[4])
+        || (input[0] == 'J' && input[1] == input[2] == input[3])
+        || (input[0] == 'J' && input[2] == input[3] == input[4])
+        || (input[0] == input[1] == 'J' && input[2] == input[3])
+        || (input[0] == input[1] == 'J' && input[3] == input[4])
+        || (input[0] == input[1] == input[2] == 'J');
 }
 
-getNextValueAndCategory: (value: int64_t, category: std::string, mappings: std::vector<std::unique_ptr<MappingCollection>>) -> std::optional<std::pair<int64_t, std::string>> = {
-    for mappings do (mapping) {
-        if (mapping*.from == category) {
-            mappedId := mapping*.getMappedId(value);
-            if mappedId.has_value() {
-                return std::make_pair(mappedId.value(), mapping*.to);
-            } else { // No entry, mapped 1:1
-                return std::make_pair(value, mapping*.to);
-            }
-        }
-    }
+isThreeOfAKind: (input: std::string_view) -> bool = {
+    return (input[0] == input[1] == input[2])
+        || (input[1] == input[2] == input[3]) 
+        || (input[2] == input[3] == input[4])
+        || (input[0] == 'J' && input[1] == input[2])
+        || (input[0] == 'J' && input[2] == input[3])
+        || (input[0] == 'J' && input[3] == input[4])
+        || (input[0] == input[1] == 'J');
+}
 
-    return std::nullopt;
+isTwoPair: (input: std::string_view) -> bool = {
+    return (input[0] == input[1] && input[2] == input[3]) 
+        || (input[0] == input[1] && input[3] == input[4]) 
+        || (input[1] == input[2] && input[3] == input[4])
+        || (input[0] == 'J' && input[1] == input[2])
+        || (input[0] == 'J' && input[2] == input[3])
+        || (input[0] == 'J' && input[3] == input[4])
+        || (input[0] == input[1] == 'J' && input[2] == input[3])
+        || (input[0] == input[1] == 'J' && input[3] == input[4])
+        || (input[0] == input[1] == input[2] == 'J');
+}
+
+ifOnePair: (input: std::string_view) -> bool = {
+    return (input[0] == input[1])
+        || (input[1] == input[2]) 
+        || (input[2] == input[3]) 
+        || (input[3] == input[4])
+        || (input[0] == 'J');
+}
+
+CardHand : @struct type = {
+    unsortedHand: std::string = ();
+    sortedHand: std::string = ();
+    bid: int64_t = ();
+
+    isFiveOfAKind: bool = false;
+    isFourOfAKind: bool = false;
+    isFullHouse: bool = false;
+    isThreeOfAKind: bool = false;
+    isTwoPair: bool = false;
+    isOnePair: bool = false;
+
+    operator<: (this, that) -> bool = {
+        thisTie := std::make_tuple(
+            this.isFiveOfAKind, 
+            this.isFourOfAKind, 
+            this.isFullHouse, 
+            this.isThreeOfAKind, 
+            this.isTwoPair, 
+            this.isOnePair, 
+            getCardValue(this.unsortedHand[0]), 
+            getCardValue(this.unsortedHand[1]), 
+            getCardValue(this.unsortedHand[2]), 
+            getCardValue(this.unsortedHand[3]), 
+            getCardValue(this.unsortedHand[4])
+        );
+
+        thatTie := std::make_tuple(
+            that.isFiveOfAKind, 
+            that.isFourOfAKind, 
+            that.isFullHouse, 
+            that.isThreeOfAKind, 
+            that.isTwoPair, 
+            that.isOnePair, 
+            getCardValue(that.unsortedHand[0]), 
+            getCardValue(that.unsortedHand[1]), 
+            getCardValue(that.unsortedHand[2]), 
+            getCardValue(that.unsortedHand[3]), 
+            getCardValue(that.unsortedHand[4])
+        );
+
+        return thisTie < thatTie;
+    }
 
 }
 
-main: () -> int = {
-    input: std::ifstream = std::ifstream("inputs/day5.txt");
+part1: () -> int = {
+    input: std::ifstream = std::ifstream("inputs/day7.txt");
     if (!input.is_open()) {
         std::cout << "Failed to open file" << std::endl;
         return -1;
     }
 
-    mappingRegex: const std::regex = (R"(([a-z]+)-to-([a-z]+) map:)");
-    
+    hands: std::vector<CardHand> = ();
     inputStr: std::string = ();
-    std::getline(input, inputStr);
-
-    seeds := parseSeedsPart2(inputStr);
-    seeds.size();
-    
-    allMappings: std::vector<std::unique_ptr<MappingCollection>> = ();
-    currentMapCollection: std::unique_ptr<MappingCollection> = ();
     while (std::getline(input, inputStr)) {
-        if (inputStr.empty()) {
-            if currentMapCollection {
-                allMappings.push_back(move(currentMapCollection));
-            }
-            continue;
-        } else if (currentMapCollection == nullptr) {
-            mappingMatch: std::smatch = ();
+        hand: CardHand = ();
 
-            if (std::regex_search(inputStr, mappingMatch, mappingRegex)) {
-                currentMapCollection = new<MappingCollection>();
-                currentMapCollection*.from = mappingMatch[1].str();
-                currentMapCollection*.to = mappingMatch[2].str();
-            } else {
-                std::cout << "Failed to regex match" << std::endl;
-            }
-        } else if (currentMapCollection) {
-            currentMapCollection*.addMapping(inputStr);
-        } else {
-            std::cout << "BAD STUFF MAN" << std::endl;
-        }
+        hand.sortedHand = inputStr.substr(0, inputStr.find(" "));
+        hand.unsortedHand = hand.sortedHand;
+
+        // Sort low to high
+        std::sort(std::begin(hand.sortedHand), std::end(hand.sortedHand), :(a, b) -> bool = {
+            return getCardValue(a) < getCardValue(b);
+        });
+
+        hand.isFiveOfAKind = isFiveOfAKind(hand.sortedHand);
+        hand.isFourOfAKind = isFourOfAKind(hand.sortedHand);
+        hand.isFullHouse = isFullHouse(hand.sortedHand);
+        hand.isThreeOfAKind = isThreeOfAKind(hand.sortedHand);  
+        hand.isTwoPair = isTwoPair(hand.sortedHand);
+        hand.isOnePair = ifOnePair(hand.sortedHand);
+
+        hand.bid = std::atoi(inputStr.substr(inputStr.find(" ") + 1).c_str());
+
+        hands.push_back(hand);
     }
 
-    if currentMapCollection {
-        allMappings.push_back(move(currentMapCollection));
+    std::sort(hands.begin(), hands.end(), :(a, b) -> bool = {
+        return a < b;
+    });
+
+    totalScore: int64_t = 0;
+    for std::views::iota(0u, hands.size()) do (i) {
+        currentHand := hands[i];
+        rank := i + 1;
+        score := currentHand.bid * rank;
+        totalScore += score;
     }
 
-    lowestLocation: int64_t = std::numeric_limits<int64_t>::max();
-    for seeds do (seedRange) {
-        for std::views::iota(seedRange.sourceStart, seedRange.sourceStart + seedRange.count) do(seedSrc) {
-            seed: int64_t = seedSrc;
-            nextValues: std::optional<std::pair<int64_t, std::string>> = std::pair<int64_t, std::string>(seed, "seed");
-            while (nextValues) {
-                newValues := getNextValueAndCategory(nextValues*.first, nextValues*.second, allMappings);
+    std::cout << "Total Score: " << totalScore << std::endl;
 
-                if newValues.has_value() && newValues*.second == "location" {
-                    lowestLocation = std::min(newValues*.first, lowestLocation);
-                    //std::cout << "Found location: " << newValues*.first << std::endl;
-                    break;
-                }
+    return 0;
+}
 
-                nextValues = newValues;
-            }
-        }
-    }
+
+part2: () = {
     
-    std::cout << "Lowest location: " << lowestLocation << std::endl;
-    std::cout << "Total mappings: " << allMappings.size() << std::endl;
-    //std::cout << "Gears: " << totalGears << " with gear ratio of " << totalGearRatio << std::endl;
+}
+
+main: () -> int = {
+    return part1();
+    //part2();
 }
