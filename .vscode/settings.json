@@ -3,5 +3,6 @@
     "files.associations": {
         "fstream": "cpp",
         "iosfwd": "cpp"
-    }
+    },
+    "debug.console.collapseIdenticalLines": false
 }
