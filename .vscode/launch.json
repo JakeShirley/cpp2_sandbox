@@ -6,7 +6,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             // send stdout to VSCode terminal window
-            "console": "integratedTerminal",
+            //"console": "integratedTerminal",
             // Resolved by CMake Tools:
             "program": "${command:cmake.launchTargetPath}",
             "args": [],

@@ -1,7 +1,7 @@
 
 GalaxyLocatiom : @struct type = {
-    x: size_t;
-    y: size_t;
+    x: int64_t;
+    y: int64_t;
 
     operator==: (this, that) -> bool = {
         return this.x == that.x && this.y == that.y;
@@ -10,6 +10,13 @@ GalaxyLocatiom : @struct type = {
     operator<: (this, that) -> bool = {
         return std::tie(this.x, this.y) < std::tie(that.x, that.y);
     }
+}
+
+makeGalaxy: (x: int64_t, y: int64_t) -> GalaxyLocatiom = {
+    result := GalaxyLocatiom();
+    result.x = x;
+    result.y = y;
+    return result;
 }
 
 expandUniverse: (inout universe: std::vector<std::string>) = {
@@ -47,6 +54,28 @@ expandUniverse: (inout universe: std::vector<std::string>) = {
     }
 }
 
+calculateEmptyColums: (universe: std::vector<std::string>) -> std::vector<size_t> = {
+    emptyColumns: std::vector<size_t> = ();
+    for std::views::iota(0u, universe[0].size()) do (charIndex) {
+        if std::ranges::none_of(universe, :(line) -> bool = {
+            return line[charIndex$] == '#'; 
+        }) {
+            emptyColumns.push_back(charIndex);
+        }
+    }
+    return emptyColumns;
+}
+
+calculateEmptyRows: (universe: std::vector<std::string>) -> std::vector<size_t> = {
+    emptyRows: std::vector<size_t> = ();
+    for std::views::iota(0u, universe.size()) do (lineIndex) {
+        if universe[lineIndex].find('#') == std::string::npos {
+            emptyRows.push_back(lineIndex);
+        }
+    }
+    return emptyRows;
+}
+
 print: (universe: std::vector<std::string>) = {
     std::cout << "Universe: " << std::endl;
     for universe do (line) {
@@ -57,15 +86,45 @@ print: (universe: std::vector<std::string>) = {
 
 findGalaxyLocations: (universe: std::vector<std::string>) -> std::vector<GalaxyLocatiom> = {
     galaxyLocations: std::vector<GalaxyLocatiom> = ();
-    for universe do (lineIndex) {
-        for std::views::iota(0u, universe[lineIndex].size()) do (charIndex) {
-            if universe[lineIndex][charIndex] == '#' {
-                galaxyLocations.emplace_back(charIndex, lineIndex);
+    for std::views::iota(0u, universe.size()) do (lineIndex) {
+        currentLine := universe[lineIndex];
+        for std::views::iota(0u, currentLine.size()) do (charIndex) {
+            if currentLine[charIndex] == '#' {
+                galaxyLocations.push_back(makeGalaxy(charIndex, lineIndex));
             }
         }
     }
     return galaxyLocations;
 }
+
+findGalaxyLocations2: (universe: std::vector<std::string>, galaxyExpansion: int64_t) -> std::vector<GalaxyLocatiom> = {
+    emptyRows := calculateEmptyRows(universe);
+    emptyColumns := calculateEmptyColums(universe);
+
+    galaxyLocations: std::vector<GalaxyLocatiom> = ();
+
+    yOffset : int64_t = 0;
+    for std::views::iota(0u, universe.size()) do (lineIndex) {
+        currentLine := universe[lineIndex];
+        xOffset : int64_t = 0;
+
+        if std::find(emptyRows.begin(), emptyRows.end(), lineIndex) != emptyRows.end() {
+            yOffset += galaxyExpansion;
+        }
+
+        for std::views::iota(0u, currentLine.size()) do (charIndex) {
+            if std::find(emptyColumns.begin(), emptyColumns.end(), charIndex) != emptyColumns.end() {
+                xOffset += galaxyExpansion;
+            }
+
+            if currentLine[charIndex] == '#' {
+                galaxyLocations.push_back(makeGalaxy(charIndex + xOffset, lineIndex  + yOffset));
+            }
+        }
+    }
+    return galaxyLocations;
+}
+
 
 makeGalaxyPair: (galaxy1: GalaxyLocatiom, galaxy2: GalaxyLocatiom) -> std::pair<GalaxyLocatiom, GalaxyLocatiom> = {
     if galaxy1 < galaxy2 {
@@ -75,8 +134,71 @@ makeGalaxyPair: (galaxy1: GalaxyLocatiom, galaxy2: GalaxyLocatiom) -> std::pair<
     }
 }
 
+getPathBetweenPoints: (galaxy1: GalaxyLocatiom, galaxy2: GalaxyLocatiom) -> std::vector<GalaxyLocatiom> = {
+    path: std::vector<GalaxyLocatiom> = ();
+    
+    currentCoordinates := galaxy1;
+    while (currentCoordinates != galaxy2) {
+        xDiff := galaxy2.x - currentCoordinates.x;
+        yDiff := galaxy2.y - currentCoordinates.y;
+
+        if std::abs(xDiff) > std::abs(yDiff) {
+            if xDiff > 0 {
+                currentCoordinates.x += 1;
+            } else {
+                currentCoordinates.x -= 1;
+            }
+        } else {
+            if yDiff > 0 {
+                currentCoordinates.y += 1;
+            } else {
+                currentCoordinates.y -= 1;
+            }
+        }
+        path.push_back(currentCoordinates);
+    }
+
+    return path;
+}
+
+getPathLengthPoints: (galaxy1: GalaxyLocatiom, galaxy2: GalaxyLocatiom, emptyColumns: std::vector<size_t>, emptyRows: std::vector<size_t>, galaxyExpansion: int64_t) -> size_t = {
+    pathLength: size_t = 0;
+    
+    currentCoordinates := galaxy1;
+    while (currentCoordinates != galaxy2) {
+        xDiff := galaxy2.x - currentCoordinates.x;
+        yDiff := galaxy2.y - currentCoordinates.y;
+
+        if std::abs(xDiff) > std::abs(yDiff) {
+            if std::find(emptyColumns.begin(), emptyColumns.end(), currentCoordinates.x) != emptyColumns.end() {
+                pathLength += galaxyExpansion;
+            }
+
+            if xDiff > 0 {
+                currentCoordinates.x += 1;
+            } else {
+                currentCoordinates.x -= 1;
+            }
+        } else {
+            if std::find(emptyRows.begin(), emptyRows.end(), currentCoordinates.y) != emptyRows.end() {
+                pathLength += galaxyExpansion;
+            }
+
+            if yDiff > 0 {
+                currentCoordinates.y += 1;
+            } else {
+                currentCoordinates.y -= 1;
+            }
+        }
+        pathLength++;
+    }
+
+    return pathLength;
+}
+
+
 part1: () -> int = {
-    input: std::ifstream = std::ifstream("inputs/day11_debug.txt");
+    input: std::ifstream = std::ifstream("inputs/day11.txt");
     if (!input.is_open()) {
         std::cout << "Failed to open file" << std::endl;
         return -1;
@@ -95,27 +217,69 @@ part1: () -> int = {
     galaxies := universe.findGalaxyLocations();
 
     galaxyPairs: std::vector<std::pair<GalaxyLocatiom, GalaxyLocatiom>> = ();
+    sumOfPaths := 0;
     for galaxies do (galaxy1) {
         for galaxies do (galaxy2) {
             if galaxy1 != galaxy2 {
                 pair := makeGalaxyPair(galaxy1, galaxy2);
                 if std::find(galaxyPairs.begin(), galaxyPairs.end(), pair) == galaxyPairs.end() {
                     galaxyPairs.push_back(pair);
+
+                    galaxyPath := getPathBetweenPoints(pair.first, pair.second);
+                    sumOfPaths += galaxyPath.size();
                 }   
             }
         }
     }
     
-    std::cout << "Path length: " << 1 << std::endl;
+    std::cout << "Paths lengths: " << sumOfPaths << std::endl;
 
     return 0;
 }
 
 part2: () -> int = {
+    input: std::ifstream = std::ifstream("inputs/day11.txt");
+    if (!input.is_open()) {
+        std::cout << "Failed to open file" << std::endl;
+        return -1;
+    }
+
+    universe: std::vector<std::string> = ();
+    inputStr: std::string = ();
+    while (std::getline(input, inputStr)) {
+        universe.push_back(inputStr);
+    }
+
+    universe.print();
+
+    galaxies := universe.findGalaxyLocations();
+    emptyColumns := universe.calculateEmptyColums();
+    emptyRows := universe.calculateEmptyRows();
+
+    galaxyPairs: std::vector<std::pair<GalaxyLocatiom, GalaxyLocatiom>> = ();
+    sumOfPaths: size_t = 0;
+
+     for std::views::iota(0u, galaxies.size()) do (galexy1Index) {
+        for std::views::iota(galexy1Index + 1, galaxies.size()) do (galexy2Index) {
+            pair := makeGalaxyPair(galaxies[galexy1Index], galaxies[galexy2Index]);
+            if std::find(galaxyPairs.begin(), galaxyPairs.end(), pair) == galaxyPairs.end() {
+                galaxyPairs.push_back(pair);
+            }   
+        }
+    }
+
+    for std::views::iota(0u, galaxyPairs.size()) do (index) {
+        currentPair := galaxyPairs[index];
+        galaxyPath := getPathLengthPoints(currentPair.first, currentPair.second, emptyColumns, emptyRows, 999999);
+        sumOfPaths += galaxyPath;
+    }
+    
+    std::cout << "Paths lengths: " << sumOfPaths << std::endl;
+
     return 0;
 }
 
 main: () -> int = {
-    return part1();
-    //return part2();
+    //return part1();
+    return part2();
 }
