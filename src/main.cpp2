@@ -1,228 +1,121 @@
 
-MapCoordinates : @struct type = {
+GalaxyLocatiom : @struct type = {
     x: size_t;
     y: size_t;
 
     operator==: (this, that) -> bool = {
         return this.x == that.x && this.y == that.y;
     }
+
+    operator<: (this, that) -> bool = {
+        return std::tie(this.x, this.y) < std::tie(that.x, that.y);
+    }
 }
 
-makeCoordinates: (x: size_t, y: size_t) -> MapCoordinates = {
-    result := MapCoordinates();
-    result.x = x;
-    result.y = y;
-    return result;
-}
+expandUniverse: (inout universe: std::vector<std::string>) = {
+    emptyRows: std::vector<size_t> = ();
+    emptyColumns: std::vector<size_t> = ();
 
-getConnectedTiles: (origin: MapCoordinates, entry: char) -> std::vector<MapCoordinates> = {
-    result := std::vector<MapCoordinates>();
+    universeWidth: size_t = universe[0].size();
 
-    if entry == 'F' {
-        result.emplace_back(makeCoordinates(origin.x, origin.y + 1));
-        result.emplace_back(makeCoordinates(origin.x + 1, origin.y));
-    } else if entry == '|' {
-        result.emplace_back(makeCoordinates(origin.x, origin.y - 1));
-        result.emplace_back(makeCoordinates(origin.x, origin.y + 1));
-    } else if entry == 'L' {
-        result.emplace_back(makeCoordinates(origin.x + 1, origin.y));
-        result.emplace_back(makeCoordinates(origin.x, origin.y - 1));
-    } else if entry == '-' {
-        result.emplace_back(makeCoordinates(origin.x + 1, origin.y));
-        result.emplace_back(makeCoordinates(origin.x - 1, origin.y));
-    } else if entry == 'J' {
-        result.emplace_back(makeCoordinates(origin.x, origin.y - 1));
-        result.emplace_back(makeCoordinates(origin.x - 1, origin.y));
-    } else if entry == '7' {
-        result.emplace_back(makeCoordinates(origin.x, origin.y + 1));
-        result.emplace_back(makeCoordinates(origin.x - 1, origin.y));
-    } else if entry == 'S' {
-        result.emplace_back(makeCoordinates(origin.x + 1, origin.y));
-        result.emplace_back(makeCoordinates(origin.x, origin.y - 1));
-
-        result.emplace_back(makeCoordinates(origin.x, origin.y + 1));
-        result.emplace_back(makeCoordinates(origin.x - 1, origin.y));
+    // Rows
+    for std::views::iota(0u, universe.size()) do (lineIndex) {
+        if universe[lineIndex].find('#') == std::string::npos {
+            emptyRows.push_back(lineIndex);
+        }
     }
 
-    return result;
+    // Columns
+    for std::views::iota(0u, universeWidth) do (charIndex) {
+        if std::ranges::none_of(universe, :(line) -> bool = {
+            return line[charIndex$] == '#'; 
+        }) {
+            emptyColumns.push_back(charIndex);
+        }
+    }
+
+    // Rows
+    for emptyRows | std::views::reverse do (emptyRowIndex) {
+        universe.insert(universe.begin() + emptyRowIndex, std::string(universeWidth, '.'));
+    }
+
+    // Columns
+    for std::views::iota(0u, universe.size()) do (lineIndex) {
+        for emptyColumns | std::views::reverse do (emptyColumnIndex) {
+            universe[lineIndex].insert(emptyColumnIndex, 1, '.');
+        }
+    }
 }
 
-findNextCoordinates: (in maze: std::vector<std::string>, in currentCoordinates: MapCoordinates, in previousCoordinates: std::optional<MapCoordinates>) -> std::optional<MapCoordinates> = {
-    currentValue := maze[currentCoordinates.y][currentCoordinates.x];
-    nextCoordinates := getConnectedTiles(currentCoordinates, currentValue);
+print: (universe: std::vector<std::string>) = {
+    std::cout << "Universe: " << std::endl;
+    for universe do (line) {
+        std::cout << line << std::endl;
+    }
+    std::cout << std::endl;
+}
 
-    for nextCoordinates do (neighborCoordinates) {
-        // Skip previous coordinates
-        if previousCoordinates.has_value() && neighborCoordinates == previousCoordinates.value() {
-            continue;
-        }
-
-        // Check if neighbor is in bounds
-        if neighborCoordinates.y >= maze.size() || neighborCoordinates.x >= maze[neighborCoordinates.y].size() {
-            continue;
-        }
-
-        neighborValue := maze[neighborCoordinates.y][neighborCoordinates.x];
-        neighborCompatibleTiles := getConnectedTiles(neighborCoordinates, neighborValue);
-    
-        for neighborCompatibleTiles do (neighborCompatibleTile) {
-            if neighborCompatibleTile == currentCoordinates {
-                return neighborCoordinates;
+findGalaxyLocations: (universe: std::vector<std::string>) -> std::vector<GalaxyLocatiom> = {
+    galaxyLocations: std::vector<GalaxyLocatiom> = ();
+    for universe do (lineIndex) {
+        for std::views::iota(0u, universe[lineIndex].size()) do (charIndex) {
+            if universe[lineIndex][charIndex] == '#' {
+                galaxyLocations.emplace_back(charIndex, lineIndex);
             }
         }
     }
-
-    return std::nullopt;
+    return galaxyLocations;
 }
 
-calculateMazePath: (in maze: std::vector<std::string>) -> std::vector<MapCoordinates> = {
-    startingCoordinates: MapCoordinates = ();
-    for std::views::iota(0u, maze.size()) do (lineIndex) {
-        startingPos := maze[lineIndex].find('S');
-        if startingPos != std::string::npos {
-            startingCoordinates.y = lineIndex;
-            startingCoordinates.x = startingPos;
-            break;
-        }
-    }
-
-    mazePath: std::vector<MapCoordinates> = ();
-    mazePath.push_back(startingCoordinates);
-
-    currentCoordinates: MapCoordinates = startingCoordinates;
-    previousCoordinates: std::optional<MapCoordinates> = ();
-    do {
-        nextCoordinates := findNextCoordinates(maze, currentCoordinates, previousCoordinates);
-
-        if !nextCoordinates.has_value() {
-            std::cout << "Failed to find next coordinates from '" << maze[currentCoordinates.y][currentCoordinates.x] << "' - " << currentCoordinates.x << ", " << currentCoordinates.y << std::endl;
-            std::abort();
-        }
-        previousCoordinates = currentCoordinates;
-        currentCoordinates = nextCoordinates.value();
-
-        mazePath.push_back(nextCoordinates.value());
-    } while currentCoordinates != startingCoordinates;
-
-    return mazePath;
-}
-
-getLeftPiece: (from: MapCoordinates, to: MapCoordinates) -> MapCoordinates = {
-    if from.x == to.x {
-        if from.y > to.y {
-            return makeCoordinates(from.x - 1, from.y);
-        } else {
-            return makeCoordinates(from.x + 1, from.y);
-        }
+makeGalaxyPair: (galaxy1: GalaxyLocatiom, galaxy2: GalaxyLocatiom) -> std::pair<GalaxyLocatiom, GalaxyLocatiom> = {
+    if galaxy1 < galaxy2 {
+        return std::make_pair(galaxy1, galaxy2);
     } else {
-        if from.x > to.x {
-            return makeCoordinates(from.x, from.y + 1);
-        } else {
-            return makeCoordinates(from.x, from.y - 1);
-        }
+        return std::make_pair(galaxy2, galaxy1);
     }
-}
-
-calculateEnclosedPieces: (in maze: std::vector<std::string>, in mazePath: std::vector<MapCoordinates>) -> std::vector<MapCoordinates> = {
-    enclosedPieces := std::vector<MapCoordinates>();
-
-    for std::views::iota(0u, maze.size()) do (lineIndex) {
-        pathHitCount: int = 0;
-
-        for std::views::iota(0u, maze[lineIndex].size()) do (charIndex) {
-            currentPos: MapCoordinates = makeCoordinates(charIndex, lineIndex);
-            currentValue := maze[lineIndex][charIndex];
-
-            isInPath := std::find(mazePath.begin(), mazePath.end(), currentPos) != mazePath.end();
-            
-            // TODO: Figure out how to make 'S' work here
-            // sometimes its a corner, sometimes its not
-            if isInPath && (currentValue == '|' || currentValue == '7' || currentValue == 'F') {
-                pathHitCount += 1;
-            }
-
-            if isInPath {
-                continue;
-            }
-
-            // Only mark as enclosed if we have only hit an odd number of walls
-            if pathHitCount % 2 == 1 {
-                enclosedPieces.push_back(currentPos);
-            }
-        }
-    }
-    
-    return enclosedPieces;
 }
 
 part1: () -> int = {
-    input: std::ifstream = std::ifstream("inputs/day10_debug3.txt");
+    input: std::ifstream = std::ifstream("inputs/day11_debug.txt");
     if (!input.is_open()) {
         std::cout << "Failed to open file" << std::endl;
         return -1;
     }
 
-    maze: std::vector<std::string> = ();
+    universe: std::vector<std::string> = ();
     inputStr: std::string = ();
     while (std::getline(input, inputStr)) {
-        maze.push_back(inputStr);
+        universe.push_back(inputStr);
     }
 
-    mazePath := calculateMazePath(maze);
-    
-    std::cout << "Path length: " << mazePath.size() << ", max distance: " << mazePath.size() / 2 << std::endl;
+    universe.print();
+    expandUniverse(universe);
+    universe.print();
 
-    return 1;
-}
+    galaxies := universe.findGalaxyLocations();
 
-part2: () -> int = {
-    input: std::ifstream = std::ifstream("inputs/day10.txt");
-    if (!input.is_open()) {
-        std::cout << "Failed to open file" << std::endl;
-        return -1;
-    }
-
-    maze: std::vector<std::string> = ();
-    inputStr: std::string = ();
-    while (std::getline(input, inputStr)) {
-        maze.push_back(inputStr);
-    }
-
-    mazePath := calculateMazePath(maze);
-    enclosedPieces := calculateEnclosedPieces(maze, mazePath);
-
-    mazeCopy := maze;
-
-    // Mark enclosed
-    for enclosedPieces do (enclosedGroundPiece) {
-        mazeCopy[enclosedGroundPiece.y][enclosedGroundPiece.x] = 'X';
-    }
-
-    // Mark not enclosed
-    for std::views::iota(0u, mazeCopy.size()) do (lineIndex) {
-        for std::views::iota(0u, mazeCopy[lineIndex].size()) do (charIndex) {
-            currentPos: MapCoordinates = makeCoordinates(charIndex, lineIndex);
-
-            isInPath := std::find(mazePath.begin(), mazePath.end(), currentPos) != mazePath.end();
-            isEnclosed := std::find(enclosedPieces.begin(), enclosedPieces.end(), currentPos) != enclosedPieces.end();
-
-            if !isInPath && !isEnclosed {
-                mazeCopy[lineIndex][charIndex] = 'O';
+    galaxyPairs: std::vector<std::pair<GalaxyLocatiom, GalaxyLocatiom>> = ();
+    for galaxies do (galaxy1) {
+        for galaxies do (galaxy2) {
+            if galaxy1 != galaxy2 {
+                pair := makeGalaxyPair(galaxy1, galaxy2);
+                if std::find(galaxyPairs.begin(), galaxyPairs.end(), pair) == galaxyPairs.end() {
+                    galaxyPairs.push_back(pair);
+                }   
             }
         }
     }
+    
+    std::cout << "Path length: " << 1 << std::endl;
 
-    std::cout << "Debug maze:" << std::endl;
-    for mazeCopy do (mazeLine) {
-        std::cout << mazeLine << std::endl;
-    }
+    return 0;
+}
 
-    std::cout << "Enclosed ground pieces: " << enclosedPieces.size() << std::endl;
-
-    return 1;
+part2: () -> int = {
+    return 0;
 }
 
 main: () -> int = {
-    //return part1();
-    return part2();
+    return part1();
+    //return part2();
 }
