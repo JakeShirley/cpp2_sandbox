@@ -1,0 +1,280 @@
+
+InstructionsLine : type = {
+    public instructions: std::string;
+    public rawLine: std::string;
+    public groups: std::vector<size_t>;
+
+    operator=:(out this, input: std::string) = {
+        instructions = input.substr(0, input.find(' '));
+        rawLine = input;
+        groups = ();
+
+        ss := std::stringstream(input.substr(instructions.length() + 1));
+        ss.good();
+        token: std::string = ();
+        while (std::getline(ss, token, ',')) {
+            groups.push_back(std::stoi(token));
+        }
+    }
+
+    isValid: (this) -> bool = {
+
+        hashCount := std::ranges::count(instructions, '#');
+        totalGroupsCount := 0;
+        for groups do (group) {
+            totalGroupsCount += group;
+        }
+
+        if hashCount != totalGroupsCount {
+            return false;
+        }
+
+        isInGroup := false;
+        currentGroupIndex : size_t = 0;
+        currentGroupCount : size_t = 0;
+        groupCount := 0;
+
+        for instructions do (instruction) {
+            if instruction == '.' {
+                if isInGroup {
+                    if currentGroupCount != groups[currentGroupIndex] {
+                        return false;
+                    }
+
+                    currentGroupIndex += 1;
+                    currentGroupCount = 0;
+                    isInGroup = false;
+                }
+            } else if instruction == '#' {
+                if !isInGroup {
+                    isInGroup = true;
+                    groupCount++;
+                }
+                currentGroupCount += 1;
+
+                if currentGroupIndex >= groups.size() {
+                    return false;
+                }
+
+                if currentGroupCount > groups[currentGroupIndex] {
+                    return false;
+                }
+            } else {
+                std::cout << "Invalid instruction: " << instruction << std::endl;
+                return false;
+            }
+        }
+
+        if isInGroup {
+            if currentGroupCount != groups[currentGroupIndex] {
+                return false;
+            }
+        }
+
+        shouldBeValid := groupCount == groups.size();
+        return shouldBeValid;
+    }
+}
+
+generateAllInstructions: (input: std::string, index: size_t, inout output: std::vector<std::unique_ptr<InstructionsLine>>) = {
+    if index >= input.length() - 1 {
+        line := new<InstructionsLine>(input);
+        output.push_back(move(line));
+        
+        return;
+    }
+
+    currentChar := input[index];
+    if currentChar == '?' {
+        nextString := input;
+        nextString[index] = '.';
+        generateAllInstructions(nextString, index + 1, output);
+
+        nextString[index] = '#';
+        generateAllInstructions(nextString, index + 1, output);
+    } else {
+        generateAllInstructions(input, index + 1, output);
+    }
+}
+
+
+generateAllInstructions2: (inout cache: std::unordered_map<std::string, uint64_t>, input: std::string, index: size_t) -> uint64_t = {
+    if index >= input.length() - 1 {
+        line: InstructionsLine = (input);
+        if line.isValid() {
+            return 1;
+        }
+        
+        return 0;
+    }
+
+    cacheKey : std::string = input;
+    cacheKey += index as std::string;
+    cacheResult := cache.find(cacheKey);
+    if cacheResult != cache.end() {
+        return cacheResult*.second;
+    }
+
+    result := 0;
+    currentChar := input[index];
+    if currentChar == '?' {
+        nextString := input;
+        nextString[index] = '.';
+        result += generateAllInstructions2(cache, nextString, index + 1);
+
+        nextString[index] = '#';
+        result += generateAllInstructions2(cache, nextString, index + 1);
+    } else {
+        result += generateAllInstructions2(cache, input, index + 1);
+    }
+
+    cache[cacheKey] = result;
+    return result;
+}
+
+generateValidInstructionCount: (inout cache: std::unordered_map<std::string, uint64_t>, input: std::string_view, inout numbers: std::vector<size_t>, numberIndex: size_t) -> uint64_t = {
+    if input.length() == 0 {
+        // If we got to all of our groups, we have a valid combination!
+        if numberIndex >= numbers.size() {
+            return 1;
+        } else {
+            return 0;
+        }
+    }
+
+    if numberIndex >= numbers.size() {
+        // If there are no '#' left, we found a valid combination!
+        if input.find('#') == std::string_view::npos {
+            return 1;
+        }
+        return 0;
+    }
+
+    // Just use fucking everything as the key
+    cacheKey : std::string = input;
+    cacheKey += " ";
+    cacheKey += numberIndex as std::string;
+    cacheKey += " ";
+    for numbers do (number) {
+        cacheKey += number as std::string;
+        cacheKey += ",";
+    }
+
+    cacheResult := cache.find(cacheKey);
+    if cacheResult != cache.end() {
+        return cacheResult*.second;
+    }
+
+    result: uint64_t = 0;
+    currentChar := input[0];
+    currentGroupNumber := numbers[numberIndex];
+
+    // Process as '#'
+    if currentChar == '.' || currentChar == '?' {
+        result += generateValidInstructionCount(cache, input | std::views::drop(1), numbers, numberIndex);
+    }
+
+    // Process as '#'
+    if currentChar == '#' || currentChar == '?' {
+        enoughNumbersLeft := currentGroupNumber <= input.length();
+        isFullGroup := input.substr(0, currentGroupNumber).find('.') == std::string_view::npos;
+
+        if enoughNumbersLeft && isFullGroup && 
+            (currentGroupNumber == input.length() || input[currentGroupNumber] != '#') {
+            result += generateValidInstructionCount(cache, input | std::views::drop(currentGroupNumber + 1), numbers, numberIndex + 1);
+        }
+    }
+
+    cache[cacheKey] = result;
+
+    return result;
+}
+
+part1: () -> int = {
+    input: std::ifstream = std::ifstream("inputs/day12_debug.txt");
+    if (!input.is_open()) {
+        std::cout << "Failed to open file" << std::endl;
+        return -1;
+    }
+
+    std::cout << std::boolalpha;
+    std::cout << "Valid test 1: " << new<InstructionsLine>("#.#.### 1,1,3")*.isValid() << std::endl;
+    std::cout << "Valid test 2: " << new<InstructionsLine>(".#...#...###. 1,1,3")*.isValid() << std::endl;
+
+    inputStr: std::string = ();
+    totalValidCombos := 0;
+    while (std::getline(input, inputStr)) {
+
+        cache: std::unordered_map<std::string, uint64_t> = ();
+
+        parsedInstruction := new<InstructionsLine>(inputStr);
+        combos := generateValidInstructionCount(cache, parsedInstruction*.instructions, parsedInstruction*.groups, 0);
+        
+
+        allLines: std::vector<std::unique_ptr<InstructionsLine>> = ();
+        generateAllInstructions(inputStr, 0, allLines);
+
+        allValidLines: std::vector<std::unique_ptr<InstructionsLine>> = ();
+        for allLines do (line) {
+            if line*.isValid() {
+                allValidLines.push_back(new<InstructionsLine>(line*.rawLine));
+            }
+        }
+
+        totalValidCombos += allValidLines.size();
+
+        std::cout << inputStr << " - " << allValidLines.size() << " arrangement(s) - " << combos << std::endl;
+        //for allValidLines do (line) {
+        //    std::cout << "    " << line*.instructions << " (valid: " << line*.isValid() << ")" << std::endl;
+        //}
+    }
+
+    std::cout << "Total valid combos: " << totalValidCombos << std::endl;
+
+    return 0;
+}
+
+part2: () -> int = {
+    input: std::ifstream = std::ifstream("inputs/day12.txt");
+    if (!input.is_open()) {
+        std::cout << "Failed to open file" << std::endl;
+        return -1;
+    }
+
+    //std::cout << std::boolalpha;
+    //std::cout << "Valid test 1: " << new<InstructionsLine>("#.#.### 1,1,3")*.isValid() << std::endl;
+    //std::cout << "Valid test 2: " << new<InstructionsLine>(".#...#...###. 1,1,3")*.isValid() << std::endl;
+
+    inputStr: std::string = ();
+    totalValidCombos : uint64_t = 0;
+
+    while (std::getline(input, inputStr)) {
+        instructions := inputStr.substr(0, inputStr.find(' '));
+        groups := inputStr.substr(instructions.length() + 1);
+        
+        inputStr = instructions + "?" 
+                    + instructions + "?" 
+                    + instructions + "?" 
+                    + instructions + "?" 
+                    + instructions + " " + groups + "," + groups + "," + groups + "," + groups + "," + groups;
+        
+        cache: std::unordered_map<std::string, uint64_t> = ();
+
+        parsedInstruction := new<InstructionsLine>(inputStr);
+        combos := generateValidInstructionCount(cache, parsedInstruction*.instructions, parsedInstruction*.groups, 0);
+        
+        //combos := generateAllInstructions2(cache, inputStr, 0);
+        
+        totalValidCombos += combos;
+        std::cout << inputStr << " - " << combos << " arrangement(s)" << std::endl;
+    }
+
+    std::cout << "Total valid combos: " << totalValidCombos << std::endl;
+
+    return 0;
+}
+
+main: () -> int = {
+    //return part1();
+    return part2();
+}
