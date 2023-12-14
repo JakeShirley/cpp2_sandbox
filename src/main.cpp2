@@ -1,142 +1,31 @@
 
-getDifferenceCount: (str1: std::string, str2: std::string) -> size_t = {
-    count := 0u;
-    for std::views::iota(0u, str1.size()) do (i) {
-        if (str1[i] != str2[i]) {
-            count++;
-        }
-    }
-    return count;
-}
-
-findMirrorRowIndicies: (inout lines: std::vector<std::string>) -> std::optional<std::pair<size_t, size_t>> = {
-    mirrorDistance := lines.size();
-    mirrorStart := 0u;
-    mirrorEnd := lines.size();
-
-    mirrorSearch: for std::views::iota(mirrorStart, mirrorEnd - 1) do (i) {
-        for std::views::iota(0u, mirrorDistance) do (j) {
-            left: size_t = i - j;
-            right: size_t = i + 1 + j;
-
-            // Got to an edge, we found our mirror
-            if (left >= lines.size() || right >= lines.size()) {
-                return std::make_pair(i, i + 1);
-            }
-
-            if (lines[left] != lines[right]) {
-                continue mirrorSearch;
-            }
-        }
-    }
-    return std::nullopt;
-}
-
-
-findMirrorRowIndiciesSmudge: (inout lines: std::vector<std::string>) -> std::optional<std::pair<size_t, size_t>> = {
-    mirrorDistance := lines.size();
-    mirrorStart := 0u;
-    mirrorEnd := lines.size();
-
-    mirrorSearch: for std::views::iota(mirrorStart, mirrorEnd - 1) do (i) {
-        smudgeCount := 0;
-        for std::views::iota(0u, mirrorDistance) do (j) {
-            left: size_t = i - j;
-            right: size_t = i + 1 + j;
-
-            // Got to an edge, we found our mirror
-            if (left >= lines.size() || right >= lines.size()) {
-                // Require a smudge!
-                if smudgeCount == 1 {
-                    return std::make_pair(i, i + 1);
-                } else {
-                    continue mirrorSearch;
-                }
-                
-            }
-
-            if (lines[left] != lines[right]) {
-                differenceCount := getDifferenceCount(lines[left], lines[right]);
-                if differenceCount == 1 {
-                    smudgeCount++;
-                } else {
-                    continue mirrorSearch;
-                }
-
-                if smudgeCount > 1 {
-                    continue mirrorSearch;
-                } else {
-                    // One smudge is OK!
-                }
-            }
-        }
-    }
-    return std::nullopt;
-}
-
-Pattern : type = {
-    public lines: std::vector<std::string>;
-    public rotatedLines: std::vector<std::string>;
-
-    operator=:(out this) = {
-        lines = ();
-        rotatedLines = ();
-    }
-
-    calculateRotatedLines: (inout this) = {
-        for std::views::iota(0u, lines[0].size()) do (i) {
-            newLine := std::string();
-            for std::views::iota(0u, lines.size()) do (j) {
-                newLine += lines[j][i];
-            }
-            rotatedLines.push_back(move newLine);
-        }
-    }
-}
 
 part1: () -> int = {
-    input: std::ifstream = std::ifstream("inputs/day13.txt");
+    input: std::ifstream = std::ifstream("inputs/day14_debug.txt");
     if (!input.is_open()) {
         std::cout << "Failed to open file" << std::endl;
         return -1;
     }
 
-    patterns := std::vector<std::unique_ptr<Pattern>>();
     inputStr: std::string = ();
-
-    currentPattern := std::unique_ptr<Pattern>();
+    lines := std::vector<std::string>();
+    
     while (std::getline(input, inputStr)) {
-        if (inputStr.empty()) {
-            currentPattern*.calculateRotatedLines();
-            patterns.push_back(move currentPattern);
-        } else {
-            if currentPattern == nullptr {
-                currentPattern = new<Pattern>();
-            }
-
-            currentPattern*.lines.push_back(move inputStr);
-        }
+        lines.push_back(move inputStr);
     }
-    currentPattern*.calculateRotatedLines();
-    patterns.push_back(move currentPattern);
 
-    totalScore: u64 = 0;
-    puzzleIndex := 0;
-    for patterns do (pattern) {
-        mirroredColumns := pattern*.rotatedLines.findMirrorRowIndicies();
-        mirroredRows := pattern*.lines.findMirrorRowIndicies();
-
-        if mirroredColumns.has_value() {
-            //std::cout << "Found mirrored columns at " << mirroredColumns*.first << " and " << mirroredColumns*.second << std::endl;
-            totalScore += mirroredColumns*.second;
-        } else if mirroredRows.has_value() {
-            //std::cout << "Found mirrored rows at " << mirroredRows*.first << " and " << mirroredRows*.second << std::endl;
-            totalScore += mirroredRows*.second * 100;
-        } else {
-            std::cout << "No mirror found for puzzle " << puzzleIndex << std::endl;
+    for std::views::iota(1u, lines.size()) do(i) {
+        for std::views::iota(0u, lines[i].size()) do(j) {
+            currentChar := lines[i][j];
+            if currentChar == 'O' {
+                movedY := i - 1;
+                do {
+                    lines[movedY][j] = 'O';
+                    lines[i][j] = '.';
+                    movedY -= 1;
+                } while (movedY >= 0 && movedY < lines.size() && lines[movedY][j] == '.');
+            }
         }
-
-        puzzleIndex++;
     }
 
     std::cout << "Part 1: " << totalScore << std::endl;
@@ -145,58 +34,12 @@ part1: () -> int = {
 }
 
 part2: () -> int = {
-    input: std::ifstream = std::ifstream("inputs/day13.txt");
-    if (!input.is_open()) {
-        std::cout << "Failed to open file" << std::endl;
-        return -1;
-    }
-
-    patterns := std::vector<std::unique_ptr<Pattern>>();
-    inputStr: std::string = ();
-
-    currentPattern := std::unique_ptr<Pattern>();
-    while (std::getline(input, inputStr)) {
-        if (inputStr.empty()) {
-            currentPattern*.calculateRotatedLines();
-            patterns.push_back(move currentPattern);
-        } else {
-            if currentPattern == nullptr {
-                currentPattern = new<Pattern>();
-            }
-
-            currentPattern*.lines.push_back(move inputStr);
-        }
-    }
-    currentPattern*.calculateRotatedLines();
-    patterns.push_back(move currentPattern);
-
-    totalScore: u64 = 0;
-    puzzleIndex := 0;
-    for patterns do (pattern) {
-        mirroredColumns := pattern*.rotatedLines.findMirrorRowIndiciesSmudge();
-        mirroredRows := pattern*.lines.findMirrorRowIndiciesSmudge();
-
-        if mirroredColumns.has_value() {
-            //std::cout << "Found mirrored columns at " << mirroredColumns*.first << " and " << mirroredColumns*.second << std::endl;
-            totalScore += mirroredColumns*.second;
-        } else if mirroredRows.has_value() {
-            //std::cout << "Found mirrored rows at " << mirroredRows*.first << " and " << mirroredRows*.second << std::endl;
-            totalScore += mirroredRows*.second * 100;
-        } else {
-            std::cout << "No mirror found for puzzle " << puzzleIndex << std::endl;
-        }
-
-        puzzleIndex++;
-    }
-
-    std::cout << "Part 2: " << totalScore << std::endl;
-
-    return 0;
+   return -1;
 }
 
 main: () -> int = {
-    part1();
-    part2();
+    part1 := part1();
+    part2 := part2();
 
-    return 0;
+    return part1 + part2;
 }
