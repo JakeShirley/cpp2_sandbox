@@ -6,241 +6,356 @@ Direction : @flag_enum<u8> type = {
     Right;
 }
 
-HeatLossCache : @value type = {
-    public x: size_t = 0;
-    public y: size_t = 0;
-    public direction: Direction = Direction::None;
-    public spacesInDirection: size_t = 0;
+DiggerInstruction : @struct type = {
+    distance: size_t;
+    direction: Direction = Direction::None;
+    color: uint32_t = 0;
+    debug: std::string;
 }
 
-StackState : @struct type = {
-    public x: size_t;
-    public y: size_t;
-    public heatLoss: size_t;
-    public direction: Direction = Direction::None;
-    public spacesInDirection: size_t;
-    public path: std::vector<HeatLossCache>;
-}
+Location : @value type = {
+    public x: int32_t = 0;
+    public y: int32_t = 0;
 
-projectCoordinates: (direction: Direction, x: size_t, y: size_t) -> std::tuple<size_t, size_t> = {
-    if direction == Direction::Up {
-        return std::make_tuple(x, y - 1);
-    } else if direction == Direction::Down {
-        return std::make_tuple(x, y + 1);
-    } else if direction == Direction::Left {
-        return std::make_tuple(x - 1, y);
-    } else if direction == Direction::Right {
-        return std::make_tuple(x + 1, y);
-    }
-    return std::make_tuple(x, y);
-}
-
-printPath: (inout grid: std::vector<std::string>, inout path: std::vector<HeatLossCache>, currentState: std::optional<StackState>) = {
-    for std::views::iota(0u, grid.size()) do (lineIndex) {
-        for std::views::iota(0u, grid[lineIndex].size()) do (cellIndex) {
-            if currentState.has_value() {
-                currentStateValue := currentState.value();
-
-                if currentStateValue.x == cellIndex && currentStateValue.y == lineIndex {
-                    std::cout << "@";
-                    continue;
-                }
-               
-                pathItr := std::find_if(path.begin(), path.end(), :(state) -> bool = {
-                    return state.x == cellIndex$ && state.y == lineIndex$;
-                });
-
-                if pathItr != path.end() {
-                    pathState := pathItr*;
-                    if pathState.direction == Direction::Up {
-                        std::cout << "^";
-                    } else if pathState.direction == Direction::Down {
-                        std::cout << "v";
-                    } else if pathState.direction == Direction::Left {
-                        std::cout << "<";
-                    } else if pathState.direction == Direction::Right {
-                        std::cout << ">";
-                    }
-                } else {
-                    std::cout << grid[lineIndex][cellIndex];
-                }
-            } else {
-                std::cout << grid[lineIndex][cellIndex];
-            }
-        }
-        std::cout << std::endl;
-    }
-}
-
-queueTravel: (inout grid: std::vector<std::string>, inout visitQueue: std::priority_queue<StackState, std::vector<StackState>, std::function<bool(StackState, StackState)>>, currentState: StackState, direction: Direction, minDirectionMoves: size_t, maxDirectionMoves: size_t) = {
-    nextCoords := projectCoordinates(direction, currentState.x, currentState.y);
-
-    if nextCoords.get<1>() >= grid.size() || nextCoords.get<0>() >= grid[nextCoords.get<1>()].size() {
-        return;
-    }
-
-    if currentState.direction != direction && currentState.spacesInDirection < minDirectionMoves {
-        return;
-    }
-    if currentState.direction == direction && currentState.spacesInDirection >= maxDirectionMoves {
-        return;
-    }
-
-    nextState: StackState = (currentState);
-    nextState.x = nextCoords.get<0>();
-    nextState.y = nextCoords.get<1>();
-    nextState.direction = direction;
-    nextState.heatLoss += grid[nextState.y][nextState.x] - '0';
-
-    if direction == currentState.direction {
-        nextState.spacesInDirection += 1;
-    } else {
-        nextState.spacesInDirection = 1u;
-    }
-
-    // Debug
-    pathLocation := HeatLossCache();
-    pathLocation.x = currentState.x;
-    pathLocation.y = currentState.y;
-    pathLocation.direction = direction;
-    nextState.path.push_back(move pathLocation);
-
-    visitQueue.push(move nextState);
-}
-
-walkPath: (inout grid: std::vector<std::string>, debugLog: bool, startX: size_t, startY: size_t, minDirectionMoves: size_t, maxDirectionMoves: size_t) -> std::vector<StackState> = {
-    results: std::vector<StackState> = ();
-    comp := :(a, b) -> bool = {
-        return a.heatLoss > b.heatLoss;
-    };
-    visitQueue: std::priority_queue<StackState, std::vector<StackState>, std::function<bool(StackState, StackState)>> = (comp);
-    
-    heatLossCache: std::map<HeatLossCache, size_t> = ();
-    
-    goRight: StackState = ();
-    goRight.x = startX;
-    goRight.y = startY;
-    goRight.direction = Direction::Right;
-    visitQueue.push(move goRight);
-
-    goDown: StackState = ();
-    goDown.x = startX;
-    goDown.y = startY;
-    goDown.direction = Direction::Down;
-    visitQueue.push(move goDown);
-
-    iterationCount := 0;
-    while (!visitQueue.empty()) {
-        currentState := visitQueue.top();
-        visitQueue.pop();
-
-        cacheKey := HeatLossCache();
-        cacheKey.x = currentState.x;
-        cacheKey.y = currentState.y;
-        cacheKey.spacesInDirection = currentState.spacesInDirection;
-        cacheKey.direction = currentState.direction;
-        heatLossCacheItr := heatLossCache.find(cacheKey);
-        if heatLossCacheItr != heatLossCache.end() {
-            if currentState.heatLoss < heatLossCacheItr*.second {
-                heatLossCache[cacheKey] = currentState.heatLoss;
-            } else {
-                continue;
-            }
+    offset: (this, distance: size_t, direction: Direction) -> Location = {
+        result := Location(this);
+        if direction == Direction::Up {
+            result.y -= distance;
+        } else if direction == Direction::Down {
+            result.y += distance;
+        } else if direction == Direction::Left {
+            result.x -= distance;
+        } else if direction == Direction::Right {
+            result.x += distance;
         } else {
-            heatLossCache[cacheKey] = currentState.heatLoss;
+            std::cout << "UNKNOWN DIRECTION!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
         }
-        
-        if currentState.y == grid.size() - 1 && currentState.x == grid[0].size() - 1 {
-            if currentState.spacesInDirection >= minDirectionMoves {
-                results.push_back(move currentState);
+        return result;
+    }
+}
+
+print: (self: std::vector<std::vector<i32>>, inout stream: std::ostream) = {
+    for self do (row) {
+        for row do (c) {
+            if c == 0 {
+                stream << '.';
+            } else {
+                stream << '#';
             }
+        }
+        stream << std::endl;
+    }
+}
+
+// Stupid flood fill
+digOut: (inout self: std::vector<std::vector<i32>>, startLocation: Location) = {
+
+    visitQueue: std::vector<Location> = ();
+
+    visitQueue.push_back(move startLocation);
+
+    while !visitQueue.empty() {
+        currentLocation := visitQueue[0];
+        visitQueue.erase(visitQueue.begin());
+
+        if currentLocation.x < 0 || currentLocation.y < 0 || currentLocation.x >= cpp2::unsafe_narrow<i32>(self[0].size()) || currentLocation.y >= cpp2::unsafe_narrow<i32>(self.size()) {
             continue;
         }
 
-        iterationCount++;
-        if debugLog && iterationCount % 100 == 0{
-            std::cout << "Iteration " << iterationCount << ", queue size: " << visitQueue.size() << std::endl;
-            printPath(grid, currentState.path, currentState);
-            std::cout << std::endl;
+        if self[currentLocation.y][currentLocation.x] != 0 {
+            continue;
         }
 
-        if currentState.direction != Direction::Down {
-            queueTravel(grid, visitQueue, currentState, Direction::Up, minDirectionMoves, maxDirectionMoves);
-        }
-        if currentState.direction != Direction::Right {
-            queueTravel(grid, visitQueue, currentState, Direction::Left, minDirectionMoves, maxDirectionMoves);
-        }
-        if currentState.direction != Direction::Left {
-            queueTravel(grid, visitQueue, currentState, Direction::Right, minDirectionMoves, maxDirectionMoves);
-        }
-        if currentState.direction != Direction::Up {
-            queueTravel(grid, visitQueue, currentState, Direction::Down, minDirectionMoves, maxDirectionMoves);
-        }
+        self[currentLocation.y][currentLocation.x] = 1;
+
+        up := Location(currentLocation);
+        up.y -= 1;
+        visitQueue.push_back(move up);
+
+        down := Location(currentLocation);
+        down.y += 1;
+        visitQueue.push_back(move down);
+
+        left := Location(currentLocation);
+        left.x -= 1;
+        visitQueue.push_back(move left);
+
+        right := Location(currentLocation);
+        right.x += 1;
+        visitQueue.push_back(move right);
     }
-
-    return results;
 }
 
 part1: (debugLog: bool) = {
-    input: std::ifstream = std::ifstream("inputs/day17_debug1.txt");
+    input: std::ifstream = std::ifstream("inputs/day18.txt");
     if (!input.is_open()) {
         std::cout << "Failed to open file" << std::endl;
         return;
     }
 
     inputStr: std::string = ();
-    lines : std::vector<std::string> = ();
+    instructions : std::vector<DiggerInstruction> = ();
     while (input.getline(inputStr)) {
-        lines.push_back(move inputStr);
+        instruction: DiggerInstruction = ();
+        
+        firstSpace := inputStr.find_first_of(' ');
+        lastSpace := inputStr.find_last_of(' ');
+
+        rawDirection := inputStr.substr(0, firstSpace);
+        rawDistance := inputStr.substr(firstSpace + 1, lastSpace);
+        rawHex := inputStr.substr(lastSpace + 3, inputStr.length() - lastSpace - 4);
+
+        instruction.distance = std::stoi(rawDistance);
+        if rawDirection == "U" {
+            instruction.direction = Direction::Up;
+        } else if rawDirection == "D" {
+            instruction.direction = Direction::Down;
+        } else if rawDirection == "L" {
+            instruction.direction = Direction::Left;
+        } else if rawDirection == "R" {
+            instruction.direction = Direction::Right;
+        }
+        instruction.color = std::stoi(rawHex, 0, 16);
+        instruction.debug = (move inputStr);
+
+        instructions.push_back(move instruction);
     }
 
-    result := walkPath(lines&*, debugLog, 0u, 0u, 0u, 3u);
+    currentLocation := Location();
+    grid := std::vector<std::vector<i32>>();
 
-    leastHeatLoss := std::numeric_limits<size_t>::max();
-    leastHeatLossState := StackState();
-    for result do (resultState) {
-        heatLoss := resultState.heatLoss;
-        if heatLoss < leastHeatLoss {
-            leastHeatLoss = heatLoss;
-            leastHeatLossState = resultState;
+    for instructions do (instruction) {
+        nextLocation := currentLocation.offset(instruction.distance, instruction.direction);
+
+        if nextLocation.y >= cpp2::unsafe_narrow<i32>(grid.size()) {
+            grid.resize(nextLocation.y + 1);
+
+            for std::views::iota(0u, grid.size()) do (rowIndex) {
+                grid[rowIndex].resize(grid[0].size(), 0);
+            }
+        } else if nextLocation.y < 0 {
+            gridOffset := std::abs(nextLocation.y);
+
+            for std::views::iota(grid.size(), grid.size() + gridOffset) do (_) {
+                grid.insert(grid.begin(), std::vector<i32>());
+            }
+
+            for std::views::iota(0u, grid.size()) do (rowIndex) {
+                grid[rowIndex].resize(grid.back().size(), 0);
+            }
+
+            nextLocation.y += gridOffset;
+            currentLocation.y += gridOffset;
+        }
+
+        if nextLocation.x >= cpp2::unsafe_narrow<i32>(grid[0].size()) {
+            for std::views::iota(0u, grid.size()) do (rowIndex) {
+                grid[rowIndex].resize(nextLocation.x + 1, 0);
+            }
+        } else if nextLocation.x < 0 {
+            gridOffset := std::abs(nextLocation.x);
+           for std::views::iota(0u, grid.size()) do (rowIndex) {
+                for std::views::iota(grid[rowIndex].size(), grid[rowIndex].size() + gridOffset) do (_) {
+                    grid[rowIndex].insert(grid[rowIndex].begin(), 0);
+                }
+            }
+
+            nextLocation.x += gridOffset;
+            currentLocation.x += gridOffset;
+        }
+
+        if instruction.direction == Direction::Right {
+            for std::views::iota(currentLocation.x, nextLocation.x + 1) do (x) {
+                grid[currentLocation.y][x] = instruction.color;
+            }
+        } else if instruction.direction == Direction::Left  {
+            for std::views::iota(nextLocation.x, currentLocation.x + 1) do (x) {
+                grid[currentLocation.y][x] = instruction.color;
+            }
+        } else if instruction.direction == Direction::Up {
+            for std::views::iota( nextLocation.y, currentLocation.y + 1) do (y) {
+                grid[y][currentLocation.x] = instruction.color;
+            }
+        } else if instruction.direction == Direction::Down {
+            for std::views::iota(currentLocation.y, nextLocation.y + 1) do (y) {
+                grid[y][currentLocation.x] = instruction.color;
+            }
+        }
+
+        currentLocation = nextLocation;
+        //std::cout << "Instruction: " << instruction.debug << std::endl;
+        //grid.print(std::cout);
+        //std::cout << std::endl;
+    }
+
+    outFileBefore := std::ofstream("out_before.txt");
+    outFileAfter := std::ofstream("out_after.txt");
+
+
+    std::cout << "Before digout:" << std::endl;
+    print(grid&*, outFileBefore&*);
+
+    std::cout << "After digout:" << std::endl;
+
+    // Found by hand :D
+    start := Location();
+    start.x = 248;
+    start.y = 16;
+
+    // Debug example
+    //start := Location();
+    //start.x = 1;
+    //start.y = 1;
+
+    grid.digOut(start);
+    print(grid&*, outFileAfter&*);
+
+    totalScore := 0;
+    for grid do (row) {
+        for row do (c) {
+            if c != 0 {
+                totalScore += 1;
+            }
         }
     }
 
-    printPath(lines&*, leastHeatLossState.path, leastHeatLossState&*);
-    std::cout << "Part 1: " << leastHeatLoss << std::endl;
+    std::cout << "Part 1: " << totalScore << std::endl;
 }
 
 part2: (debugLog: bool) = {
-     input: std::ifstream = std::ifstream("inputs/day17.txt");
+    input: std::ifstream = std::ifstream("inputs/day18_debug1.txt");
     if (!input.is_open()) {
         std::cout << "Failed to open file" << std::endl;
         return;
     }
 
     inputStr: std::string = ();
-    lines : std::vector<std::string> = ();
+    instructions : std::vector<DiggerInstruction> = ();
     while (input.getline(inputStr)) {
-        lines.push_back(move inputStr);
+        instruction: DiggerInstruction = ();
+        
+        lastSpace := inputStr.find_last_of(' ');
+        rawHex := inputStr.substr(lastSpace + 3, inputStr.length() - lastSpace - 4);
+
+        rawNewDistance := rawHex.substr(0, 5);
+        rawNewDirection := rawHex[5];
+
+        instruction.distance = std::stoi(rawNewDistance, 0, 16);
+        if rawNewDirection == '3' {
+            instruction.direction = Direction::Up;
+        } else if rawNewDirection == '1' {
+            instruction.direction = Direction::Down;
+        } else if rawNewDirection == '2' {
+            instruction.direction = Direction::Left;
+        } else if rawNewDirection == '0' {
+            instruction.direction = Direction::Right;
+        }
+        instruction.color = 1;
+        instruction.debug = (move inputStr);
+
+        instructions.push_back(move instruction);
     }
 
-    result := walkPath(lines&*, debugLog, 0u, 0u, 4u, 10u);
+    currentLocation := Location();
+    grid := std::vector<std::vector<i32>>();
 
-    leastHeatLoss := std::numeric_limits<size_t>::max();
-    leastHeatLossState := StackState();
-    for result do (resultState) {
-        heatLoss := resultState.heatLoss;
-        if heatLoss < leastHeatLoss {
-            leastHeatLoss = heatLoss;
-            leastHeatLossState = resultState;
+    for instructions do (instruction) {
+        nextLocation := currentLocation.offset(instruction.distance, instruction.direction);
+
+        if nextLocation.y >= cpp2::unsafe_narrow<i32>(grid.size()) {
+            grid.resize(nextLocation.y + 1);
+
+            for std::views::iota(0u, grid.size()) do (rowIndex) {
+                grid[rowIndex].resize(grid[0].size(), 0);
+            }
+        } else if nextLocation.y < 0 {
+            gridOffset := std::abs(nextLocation.y);
+
+            for std::views::iota(grid.size(), grid.size() + gridOffset) do (_) {
+                grid.insert(grid.begin(), std::vector<i32>());
+            }
+
+            for std::views::iota(0u, grid.size()) do (rowIndex) {
+                grid[rowIndex].resize(grid.back().size(), 0);
+            }
+
+            nextLocation.y += gridOffset;
+            currentLocation.y += gridOffset;
+        }
+
+        if nextLocation.x >= cpp2::unsafe_narrow<i32>(grid[0].size()) {
+            for std::views::iota(0u, grid.size()) do (rowIndex) {
+                grid[rowIndex].resize(nextLocation.x + 1, 0);
+            }
+        } else if nextLocation.x < 0 {
+            gridOffset := std::abs(nextLocation.x);
+           for std::views::iota(0u, grid.size()) do (rowIndex) {
+                for std::views::iota(grid[rowIndex].size(), grid[rowIndex].size() + gridOffset) do (_) {
+                    grid[rowIndex].insert(grid[rowIndex].begin(), 0);
+                }
+            }
+
+            nextLocation.x += gridOffset;
+            currentLocation.x += gridOffset;
+        }
+
+        if instruction.direction == Direction::Right {
+            for std::views::iota(currentLocation.x, nextLocation.x + 1) do (x) {
+                grid[currentLocation.y][x] = instruction.color;
+            }
+        } else if instruction.direction == Direction::Left  {
+            for std::views::iota(nextLocation.x, currentLocation.x + 1) do (x) {
+                grid[currentLocation.y][x] = instruction.color;
+            }
+        } else if instruction.direction == Direction::Up {
+            for std::views::iota( nextLocation.y, currentLocation.y + 1) do (y) {
+                grid[y][currentLocation.x] = instruction.color;
+            }
+        } else if instruction.direction == Direction::Down {
+            for std::views::iota(currentLocation.y, nextLocation.y + 1) do (y) {
+                grid[y][currentLocation.x] = instruction.color;
+            }
+        }
+
+        currentLocation = nextLocation;
+    }
+
+    outFileBefore := std::ofstream("out_before.txt");
+    outFileAfter := std::ofstream("out_after.txt");
+
+
+    std::cout << "Before digout:" << std::endl;
+    print(grid&*, outFileBefore&*);
+
+    std::cout << "After digout:" << std::endl;
+
+    // Found by hand :D
+    start := Location();
+    start.x = 248;
+    start.y = 16;
+
+    // Debug example
+    //start := Location();
+    //start.x = 1;
+    //start.y = 1;
+
+    grid.digOut(start);
+    print(grid&*, outFileAfter&*);
+
+    totalScore := 0;
+    for grid do (row) {
+        for row do (c) {
+            if c != 0 {
+                totalScore += 1;
+            }
         }
     }
 
-    printPath(lines&*, leastHeatLossState.path, leastHeatLossState&*);
-    std::cout << "Part 2: " << leastHeatLoss << std::endl;
+    std::cout << "Part 2: " << totalScore << std::endl;
 }
 
 main: () -> int = {
-    part1(false);
+    //part1(true);
     std::cout << std::endl;
     part2(false);
 
