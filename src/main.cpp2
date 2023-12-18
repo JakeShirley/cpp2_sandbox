@@ -34,6 +34,59 @@ Location : @value type = {
     }
 }
 
+DiggerWall : @struct type = {
+    startLocation: Location;
+    endLocation: Location;
+    direction: Direction;
+
+    contains: (this, other: Location) -> bool = {
+        if other.x >= this.startLocation.x && other.x <= this.endLocation.x && other.y >= this.startLocation.y && other.y <= this.endLocation.y {
+            return true;
+        }
+        return false;
+    }
+}
+
+calculateExtents: (walls: std::vector<DiggerWall>) -> std::pair<Location, Location> = {
+    minLocation := Location();
+    minLocation.x = std::numeric_limits<i32>::max();
+    minLocation.y = std::numeric_limits<i32>::max();
+
+    maxLocation := Location();
+    maxLocation.x = std::numeric_limits<i32>::min();
+    maxLocation.y = std::numeric_limits<i32>::min();
+
+    for walls do (wall) {
+        if wall.startLocation.x < minLocation.x {
+            minLocation.x = wall.startLocation.x;
+        }
+        if wall.startLocation.y < minLocation.y {
+            minLocation.y = wall.startLocation.y;
+        }
+        if wall.endLocation.x < minLocation.x {
+            minLocation.x = wall.endLocation.x;
+        }
+        if wall.endLocation.y < minLocation.y {
+            minLocation.y = wall.endLocation.y;
+        }
+
+        if wall.startLocation.x > maxLocation.x {
+            maxLocation.x = wall.startLocation.x;
+        }
+        if wall.startLocation.y > maxLocation.y {
+            maxLocation.y = wall.startLocation.y;
+        }
+        if wall.endLocation.x > maxLocation.x {
+            maxLocation.x = wall.endLocation.x;
+        }
+        if wall.endLocation.y > maxLocation.y {
+            maxLocation.y = wall.endLocation.y;
+        }
+    }
+
+    return std::make_pair(move minLocation, move maxLocation);
+}
+
 print: (self: std::vector<std::vector<i32>>, inout stream: std::ostream) = {
     for self do (row) {
         for row do (c) {
@@ -86,6 +139,102 @@ digOut: (inout self: std::vector<std::vector<i32>>, startLocation: Location) = {
     }
 }
 
+parseInstructionPart1: (inputStr: std::string) -> DiggerInstruction = {
+    instruction: DiggerInstruction = ();
+        
+    firstSpace := inputStr.find_first_of(' ');
+    lastSpace := inputStr.find_last_of(' ');
+
+    rawDirection := inputStr.substr(0, firstSpace);
+    rawDistance := inputStr.substr(firstSpace + 1, lastSpace);
+    rawHex := inputStr.substr(lastSpace + 3, inputStr.length() - lastSpace - 4);
+
+    instruction.distance = std::stoi(rawDistance);
+    if rawDirection == "U" {
+        instruction.direction = Direction::Up;
+    } else if rawDirection == "D" {
+        instruction.direction = Direction::Down;
+    } else if rawDirection == "L" {
+        instruction.direction = Direction::Left;
+    } else if rawDirection == "R" {
+        instruction.direction = Direction::Right;
+    }
+    instruction.color = std::stoi(rawHex, 0, 16);
+    instruction.debug = (move inputStr);
+
+    return instruction;
+}
+
+parseInstructionPart2: (inputStr: std::string) -> DiggerInstruction = {
+    instruction: DiggerInstruction = ();
+        
+    lastSpace := inputStr.find_last_of(' ');
+    rawHex := inputStr.substr(lastSpace + 3, inputStr.length() - lastSpace - 4);
+
+    rawNewDistance := rawHex.substr(0, 5);
+    rawNewDirection := rawHex[5];
+
+    instruction.distance = std::stoi(rawNewDistance, 0, 16);
+    if rawNewDirection == '3' {
+        instruction.direction = Direction::Up;
+    } else if rawNewDirection == '1' {
+        instruction.direction = Direction::Down;
+    } else if rawNewDirection == '2' {
+        instruction.direction = Direction::Left;
+    } else if rawNewDirection == '0' {
+        instruction.direction = Direction::Right;
+    }
+    instruction.debug = (move inputStr);
+
+    return instruction;
+}
+
+calculateFloodFillCount: (inout walls: std::vector<DiggerWall>) -> uint64_t = {
+    extents := calculateExtents(walls&*);
+    totalInside: uint64_t = 0;
+
+    //std::cout << std::endl;
+    for std::views::iota(extents.first.y, extents.second.y + 1) do (y) {
+        wallHitCount: uint64_t = 0;
+
+        for std::views::iota(extents.first.x, extents.second.x + 1) do (x) {
+            currentLocation := Location();
+            currentLocation.x = x;
+            currentLocation.y = y;
+
+            isInWall := false;
+            for walls do (wall) {
+                if wall.contains(currentLocation) {
+                    if wall.direction == Direction::Up || wall.direction == Direction::Down {
+                        if wall.endLocation != currentLocation {
+                            wallHitCount += 1;
+                        }
+                    }
+                    isInWall = true;
+                }
+            }
+
+            if isInWall {
+                //std::cout << '#';
+                totalInside++; // Walls count as inside
+                continue;
+            }
+
+            // Only mark as enclosed if we have only hit an odd number of walls
+            if wallHitCount % 2 == 1 {
+                totalInside++;
+                //std::cout << 'X';
+            } else {
+                //std::cout << '.';
+            }
+        }
+        //std::cout << std::endl;
+    }
+    //std::cout << std::endl;
+
+    return totalInside;
+}
+
 part1: (debugLog: bool) = {
     input: std::ifstream = std::ifstream("inputs/day18.txt");
     if (!input.is_open()) {
@@ -96,29 +245,7 @@ part1: (debugLog: bool) = {
     inputStr: std::string = ();
     instructions : std::vector<DiggerInstruction> = ();
     while (input.getline(inputStr)) {
-        instruction: DiggerInstruction = ();
-        
-        firstSpace := inputStr.find_first_of(' ');
-        lastSpace := inputStr.find_last_of(' ');
-
-        rawDirection := inputStr.substr(0, firstSpace);
-        rawDistance := inputStr.substr(firstSpace + 1, lastSpace);
-        rawHex := inputStr.substr(lastSpace + 3, inputStr.length() - lastSpace - 4);
-
-        instruction.distance = std::stoi(rawDistance);
-        if rawDirection == "U" {
-            instruction.direction = Direction::Up;
-        } else if rawDirection == "D" {
-            instruction.direction = Direction::Down;
-        } else if rawDirection == "L" {
-            instruction.direction = Direction::Left;
-        } else if rawDirection == "R" {
-            instruction.direction = Direction::Right;
-        }
-        instruction.color = std::stoi(rawHex, 0, 16);
-        instruction.debug = (move inputStr);
-
-        instructions.push_back(move instruction);
+        instructions.push_back(parseInstructionPart1(move inputStr));
     }
 
     currentLocation := Location();
@@ -229,129 +356,73 @@ part2: (debugLog: bool) = {
         return;
     }
 
+    testWall := DiggerWall();
+    testWall.startLocation.x = 0;
+    testWall.startLocation.y = 0;
+    testWall.endLocation.x = 0;
+    testWall.endLocation.y = 2;
+
+    testLocation := Location();
+    testLocation.x = 0;
+    testLocation.y = 1;
+
+    isInWall : = testWall.contains(testLocation);
+    isInWall = false;
+
     inputStr: std::string = ();
-    instructions : std::vector<DiggerInstruction> = ();
+    walls: std::vector<DiggerWall> = ();
+    startLocation := Location();
+
     while (input.getline(inputStr)) {
-        instruction: DiggerInstruction = ();
-        
-        lastSpace := inputStr.find_last_of(' ');
-        rawHex := inputStr.substr(lastSpace + 3, inputStr.length() - lastSpace - 4);
+        instruction := parseInstructionPart2(move inputStr);
 
-        rawNewDistance := rawHex.substr(0, 5);
-        rawNewDirection := rawHex[5];
+        endLocation := startLocation.offset(instruction.distance, instruction.direction);
 
-        instruction.distance = std::stoi(rawNewDistance, 0, 16);
-        if rawNewDirection == '3' {
-            instruction.direction = Direction::Up;
-        } else if rawNewDirection == '1' {
-            instruction.direction = Direction::Down;
-        } else if rawNewDirection == '2' {
-            instruction.direction = Direction::Left;
-        } else if rawNewDirection == '0' {
-            instruction.direction = Direction::Right;
+        wall := DiggerWall();
+
+        if instruction.direction == Direction::Up || instruction.direction == Direction::Down {
+            if startLocation.y > endLocation.y {
+                wall.startLocation = endLocation;
+                wall.endLocation = startLocation;
+            } else {
+                wall.startLocation = startLocation;
+                wall.endLocation = endLocation;
+            }
+        } else {
+            if startLocation.x > endLocation.x {
+                wall.startLocation = endLocation;
+                wall.endLocation = startLocation;
+            } else {
+                wall.startLocation = startLocation;
+                wall.endLocation = endLocation;
+            }
         }
-        instruction.color = 1;
-        instruction.debug = (move inputStr);
 
-        instructions.push_back(move instruction);
+        wall.direction = instruction.direction;
+
+        walls.push_back(move wall);
+        startLocation = endLocation;
     }
 
-    currentLocation := Location();
-    grid := std::vector<std::vector<i32>>();
+    extents := calculateExtents(walls&*);
 
-    for instructions do (instruction) {
-        nextLocation := currentLocation.offset(instruction.distance, instruction.direction);
-
-        if nextLocation.y >= cpp2::unsafe_narrow<i32>(grid.size()) {
-            grid.resize(nextLocation.y + 1);
-
-            for std::views::iota(0u, grid.size()) do (rowIndex) {
-                grid[rowIndex].resize(grid[0].size(), 0);
-            }
-        } else if nextLocation.y < 0 {
-            gridOffset := std::abs(nextLocation.y);
-
-            for std::views::iota(grid.size(), grid.size() + gridOffset) do (_) {
-                grid.insert(grid.begin(), std::vector<i32>());
-            }
-
-            for std::views::iota(0u, grid.size()) do (rowIndex) {
-                grid[rowIndex].resize(grid.back().size(), 0);
-            }
-
-            nextLocation.y += gridOffset;
-            currentLocation.y += gridOffset;
+    // Move everything positive because I am a mental math baby
+    if extents.first.x < 0 {
+        for walls do (inout wall) {
+            wall.startLocation.x -= extents.first.x;
+            wall.endLocation.x -= extents.first.x;
         }
-
-        if nextLocation.x >= cpp2::unsafe_narrow<i32>(grid[0].size()) {
-            for std::views::iota(0u, grid.size()) do (rowIndex) {
-                grid[rowIndex].resize(nextLocation.x + 1, 0);
-            }
-        } else if nextLocation.x < 0 {
-            gridOffset := std::abs(nextLocation.x);
-           for std::views::iota(0u, grid.size()) do (rowIndex) {
-                for std::views::iota(grid[rowIndex].size(), grid[rowIndex].size() + gridOffset) do (_) {
-                    grid[rowIndex].insert(grid[rowIndex].begin(), 0);
-                }
-            }
-
-            nextLocation.x += gridOffset;
-            currentLocation.x += gridOffset;
-        }
-
-        if instruction.direction == Direction::Right {
-            for std::views::iota(currentLocation.x, nextLocation.x + 1) do (x) {
-                grid[currentLocation.y][x] = instruction.color;
-            }
-        } else if instruction.direction == Direction::Left  {
-            for std::views::iota(nextLocation.x, currentLocation.x + 1) do (x) {
-                grid[currentLocation.y][x] = instruction.color;
-            }
-        } else if instruction.direction == Direction::Up {
-            for std::views::iota( nextLocation.y, currentLocation.y + 1) do (y) {
-                grid[y][currentLocation.x] = instruction.color;
-            }
-        } else if instruction.direction == Direction::Down {
-            for std::views::iota(currentLocation.y, nextLocation.y + 1) do (y) {
-                grid[y][currentLocation.x] = instruction.color;
-            }
-        }
-
-        currentLocation = nextLocation;
     }
-
-    outFileBefore := std::ofstream("out_before.txt");
-    outFileAfter := std::ofstream("out_after.txt");
-
-
-    std::cout << "Before digout:" << std::endl;
-    print(grid&*, outFileBefore&*);
-
-    std::cout << "After digout:" << std::endl;
-
-    // Found by hand :D
-    start := Location();
-    start.x = 248;
-    start.y = 16;
-
-    // Debug example
-    //start := Location();
-    //start.x = 1;
-    //start.y = 1;
-
-    grid.digOut(start);
-    print(grid&*, outFileAfter&*);
-
-    totalScore := 0;
-    for grid do (row) {
-        for row do (c) {
-            if c != 0 {
-                totalScore += 1;
-            }
+    if extents.first.y < 0 {
+        for walls do (inout wall) {
+            wall.startLocation.y -= extents.first.y;
+            wall.endLocation.y -= extents.first.y;
         }
     }
 
-    std::cout << "Part 2: " << totalScore << std::endl;
+    insideBitsCount := calculateFloodFillCount(walls&*);
+
+    std::cout << "Part 2: " << insideBitsCount << std::endl;
 }
 
 main: () -> int = {
