@@ -6,39 +6,46 @@ Direction : @flag_enum<u8> type = {
     Right;
 }
 
-printGrid: (grid: std::vector<std::vector<Direction>>, inout subGrid: std::vector<std::string>, currentLocation: std::optional<std::tuple<size_t, size_t>>) = {
-    
-    for std::views::iota(0u, grid.size()) do (lineIndex) {
-        for std::views::iota(0u, grid[lineIndex].size()) do (cellIndex) {
-            if currentLocation.has_value() && currentLocation.value().get<0>() == cellIndex && currentLocation.value().get<1>() == lineIndex {
-                std::cout << "@";
-                continue;
-            } else if subGrid[lineIndex][cellIndex] != '.' {
-                std::cout << subGrid[lineIndex][cellIndex];
-                continue;
-            }
-            
-            currentValue := grid[lineIndex][cellIndex];
-            if currentValue == Direction::Up {
-                std::cout << "^";
-            } else if currentValue == Direction::Down {
-                std::cout << "v";
-            } else if currentValue == Direction::Left {
-                std::cout << "<";
-            } else if currentValue == Direction::Right {
-                std::cout << ">";
-            } else {
-                bitSet: std::bitset<8> = (currentValue.get_raw_value());
-                if bitSet.count() == 0 {
-                    std::cout << ".";
-                } else if bitSet.count() < 10u {
-                    std::cout << bitSet.count();
-                } else {                 
-                    std::cout << "X";
-                }
+HeatLossCache : @value type = {
+    public x: size_t = 0;
+    public y: size_t = 0;
+    public direction: Direction = Direction::None;
+    public heatLoss: size_t = 0;
+}
+
+StackState : @struct type = {
+    public x: size_t;
+    public y: size_t;
+    public heatLoss: size_t;
+    public direction: Direction;
+    public spacesInDirection: size_t;
+    public path: std::vector<std::shared_ptr<StackState>>;
+
+    pathContains: (this, otherX: size_t, otherY: size_t) -> bool = {
+        for path do (pathState) {
+            if pathState*.x == otherX && pathState*.y == otherY {
+                return true;
             }
         }
-        std::cout << std::endl;
+        return false;
+    }
+
+    mustTurn: (this) -> Direction = {
+        if path.size() >= 3u {
+            if path[path.size() - 1]*.direction == path[path.size() - 2]*.direction == path[path.size() - 3]*.direction {
+                return path[path.size() - 1]*.direction;
+            }
+        }
+
+        return Direction::None;
+    }
+
+    calculateHeatLoss: (this, inout grid: std::vector<std::string>) -> size_t = {
+        totalHeatLoss := 0;
+        for path do (pathState) {
+            totalHeatLoss += grid[pathState*.y][pathState*.x] - '0';
+        }
+        return totalHeatLoss;
     }
 }
 
@@ -55,87 +62,135 @@ projectCoordinates: (direction: Direction, x: size_t, y: size_t) -> std::tuple<s
     return std::make_tuple(x, y);
 }
 
-queueTravel: (inout visitQueue: std::vector<std::tuple<size_t, size_t, Direction>>, direction: Direction, x: size_t, y: size_t) = {
-    nextCoords := projectCoordinates(direction, x, y);
-    visitQueue.push_back(std::make_tuple(nextCoords.get<0>(), nextCoords.get<1>(), direction));
+printPath: (inout grid: std::vector<std::string>, inout path: std::vector<std::shared_ptr<StackState>>, currentState: std::shared_ptr<StackState>) = {
+    for std::views::iota(0u, grid.size()) do (lineIndex) {
+        for std::views::iota(0u, grid[lineIndex].size()) do (cellIndex) {
+            if currentState {
+                currentStateValue := currentState*;
+
+                if currentStateValue.x == cellIndex && currentStateValue.y == lineIndex {
+                    std::cout << "@";
+                    continue;
+                }
+               
+                pathItr := std::find_if(path.begin(), path.end(), :(state) -> bool = {
+                    return state*.x == cellIndex$ && state*.y == lineIndex$;
+                });
+
+                if pathItr != path.end() {
+                    pathState := pathItr*;
+                    if pathState*.direction == Direction::Up {
+                        std::cout << "^";
+                    } else if pathState*.direction == Direction::Down {
+                        std::cout << "v";
+                    } else if pathState*.direction == Direction::Left {
+                        std::cout << "<";
+                    } else if pathState*.direction == Direction::Right {
+                        std::cout << ">";
+                    }
+                } else {
+                    std::cout << grid[lineIndex][cellIndex];
+                }
+            } else {
+                std::cout << grid[lineIndex][cellIndex];
+            }
+        }
+        std::cout << std::endl;
+    }
 }
 
-walkPath: (inout grid: std::vector<std::string>, debugLog: bool, startDirection: Direction, startX: size_t, startY: size_t, inout energizedGrid: std::vector<std::vector<Direction>>) = {
-    visitQueue: std::vector<std::tuple<size_t, size_t, Direction>> = ();
+queueTravel: (inout grid: std::vector<std::string>, inout visitQueue: std::vector<std::shared_ptr<StackState>>, currentState: std::shared_ptr<StackState>, direction: Direction) = {
+    nextCoords := projectCoordinates(direction, currentState*.x, currentState*.y);
+
+    if nextCoords.get<1>() >= grid.size() || nextCoords.get<0>() >= grid[nextCoords.get<1>()].size() {
+        return;
+    }
+
+    //if currentState*.pathContains(nextCoords.get<0>(), nextCoords.get<1>()) {
+    //    return;
+    //} else 
+    if currentState*.direction == direction && currentState*.spacesInDirection >= 2u {
+        return;
+    }
+
+    nextState := std::make_shared<StackState>(currentState*);
+    nextState*.x = nextCoords.get<0>();
+    nextState*.y = nextCoords.get<1>();
+    nextState*.direction = direction;
+    nextState*.heatLoss += grid[nextState*.y][nextState*.x] - '0';
+
+    if direction == currentState*.direction {
+        nextState*.spacesInDirection += 1;
+    } else {
+        nextState*.spacesInDirection = 1u;
+    }
+    //nextState*.path.push_back(currentState);
+
+    visitQueue.push_back(move nextState);
+}
+
+walkPath: (inout grid: std::vector<std::string>, debugLog: bool, startX: size_t, startY: size_t) -> std::vector<std::shared_ptr<StackState>> = {
+    results: std::vector<std::shared_ptr<StackState>> = ();
+    visitQueue: std::vector<std::shared_ptr<StackState>> = ();
+    heatLossCache: std::map<HeatLossCache, size_t> = ();
     
-    visitQueue.push_back(std::make_tuple(startX, startY, startDirection));
+    goRight := std::make_shared<StackState>();
+    goRight*.x = startX;
+    goRight*.y = startY;
+    goRight*.direction = Direction::Right;
+    visitQueue.push_back(move goRight);
+
+    goDown := std::make_shared<StackState>();
+    goDown*.x = startX;
+    goDown*.y = startY;
+    goDown*.direction = Direction::Down;
+    visitQueue.push_back(move goDown);
 
     iterationCount := 0;
     while (!visitQueue.empty()) {
-        x: size_t = visitQueue[0].get<0>();
-        y: size_t = visitQueue[0].get<1>();
-        direction: Direction = visitQueue[0].get<2>();
-
+        currentState := visitQueue[0];
         visitQueue.erase(visitQueue.begin());
 
-        if y >= grid.size() || x >= grid[y].size() {
+        if currentState*.y == grid.size() - 1 && currentState*.x == grid[0].size() - 1 {
+            results.push_back(move currentState);
             continue;
         }
 
-        // Already visited this cell twice
-        if (energizedGrid[y][x] & direction) != Direction::None {
-            energizedGrid[y][x] |= direction;
-            continue;
+        cacheKey := HeatLossCache();
+        cacheKey.x = currentState*.x;
+        cacheKey.y = currentState*.y;
+        cacheKey.direction = currentState*.direction;
+        cacheKey.heatLoss = currentState*.heatLoss;
+        heatLossCacheItr := heatLossCache.find(cacheKey);
+        if heatLossCacheItr != heatLossCache.end() {
+            if currentState*.heatLoss < heatLossCacheItr*.second {
+                heatLossCache[cacheKey] = currentState*.heatLoss;
+            } else {
+                continue;
+            }
+        } else {
+            heatLossCache[cacheKey] = currentState*.heatLoss;
         }
-        energizedGrid[y][x] |= direction;
+        
 
         iterationCount++;
-        if debugLog {
-            std::cout << "Iteration " << iterationCount << std::endl;
-            energizedGrid.printGrid(grid, std::make_tuple(x, y));
+        if debugLog && iterationCount % 1000 == 0{
+            std::cout << "Iteration " << iterationCount << ", queue size: " << visitQueue.size() << std::endl;
+            printPath(grid, currentState*.path, currentState);
             std::cout << std::endl;
         }
-
-        currentChar := grid[y][x];
-        isBackSlash := currentChar == '\\'; // cpp2 sucks
         
-        if currentChar == '.' {
-            queueTravel(visitQueue, direction, x, y);
-        } else if currentChar == '|' {
-            if direction == Direction::Up || direction == Direction::Down {
-                queueTravel(visitQueue, direction, x, y);
-            } else {
-                queueTravel(visitQueue, Direction::Up, x, y);
-                queueTravel(visitQueue, Direction::Down, x, y);
-            }
-        } else if currentChar == '-' {
-            if direction == Direction::Left || direction == Direction::Right {
-                queueTravel(visitQueue, direction, x, y);
-            } else {
-                queueTravel(visitQueue, Direction::Left, x, y);
-                queueTravel(visitQueue, Direction::Right, x, y);
-            }
-        } else if isBackSlash {
-            if direction == Direction::Down {
-                queueTravel(visitQueue, Direction::Right, x, y);
-            } else if direction == Direction::Left {
-                queueTravel(visitQueue, Direction::Up, x, y);
-            } else if direction == Direction::Right {
-                queueTravel(visitQueue, Direction::Down, x, y);
-            } else if direction == Direction::Up {
-                queueTravel(visitQueue, Direction::Left, x, y);
-            }
-        } else if currentChar == '/' {
-            if direction == Direction::Down {
-                queueTravel(visitQueue, Direction::Left, x, y);
-            } else if direction == Direction::Left {
-                queueTravel(visitQueue, Direction::Down, x, y);
-            } else if direction == Direction::Right {
-                queueTravel(visitQueue, Direction::Up, x, y);
-            } else if direction == Direction::Up {
-                queueTravel(visitQueue, Direction::Right, x, y);
-            }
-        }
+        queueTravel(grid, visitQueue, currentState, Direction::Up);
+        queueTravel(grid, visitQueue, currentState, Direction::Left);
+        queueTravel(grid, visitQueue, currentState, Direction::Right);
+        queueTravel(grid, visitQueue, currentState, Direction::Down);
     }
+
+    return results;
 }
 
 part1: (debugLog: bool) = {
-    input: std::ifstream = std::ifstream("inputs/day16.txt");
+    input: std::ifstream = std::ifstream("inputs/day17_debug.txt");
     if (!input.is_open()) {
         std::cout << "Failed to open file" << std::endl;
         return;
@@ -143,101 +198,32 @@ part1: (debugLog: bool) = {
 
     inputStr: std::string = ();
     lines : std::vector<std::string> = ();
-    energizedGrid: std::vector<std::vector<Direction>> = ();
     while (input.getline(inputStr)) {
         lines.push_back(move inputStr);
-
-        powerLine: std::vector<Direction> = ();
-        powerLine.resize(lines[0].size(), Direction::None);
-        energizedGrid.push_back(move powerLine);
-    }
-    
-    if debugLog {
-        std::cout << "Before:" << std::endl;
-        energizedGrid.printGrid(lines, std::nullopt);
-        std::cout << std::endl;
     }
 
-    walkPath(lines&*, debugLog, Direction::Right, 0u, 0u, energizedGrid);
+    result := walkPath(lines&*, false, 0u, 0u);
 
-    if debugLog {
-        std::cout << "After:" << std::endl;
-        energizedGrid.printGrid(lines&*, std::nullopt);
-        std::cout << std::endl;
-    }
-
-    totalEnergizedPlots := 0u;
-    for energizedGrid do (line) {
-        for line do (cell) {
-            if cell != Direction::None {
-                totalEnergizedPlots++;
-            }
+    leastHeatLoss := std::numeric_limits<size_t>::max();
+    leastHeatLossState := std::shared_ptr<StackState>();
+    for result do (resultState) {
+        heatLoss := resultState*.heatLoss;
+        if heatLoss < leastHeatLoss {
+            leastHeatLoss = heatLoss;
+            leastHeatLossState = resultState;
         }
     }
 
-    std::cout << "Part 1: " << totalEnergizedPlots << std::endl;
-}
-
-getTotalEnegery: (inout grid: std::vector<std::string>, debugLog: bool, startDirection: Direction, startX: size_t, startY: size_t, inout energizedGridTemplate: std::vector<std::vector<Direction>>) -> uint64_t = {
-    energizedGrid := energizedGridTemplate;
-    walkPath(grid, debugLog, startDirection, startX, startY, energizedGrid);
-
-    totalEnergizedPlots := 0u;
-    for energizedGrid do (line) {
-        for line do (cell) {
-            if cell != Direction::None {
-                totalEnergizedPlots++;
-            }
-        }
-    }
-
-    return totalEnergizedPlots;
+    printPath(lines&*, leastHeatLossState*.path, leastHeatLossState);
+    std::cout << "Part 1: " << leastHeatLoss << std::endl;
 }
 
 part2: (debugLog: bool) = {
-    input: std::ifstream = std::ifstream("inputs/day16.txt");
-    if (!input.is_open()) {
-        std::cout << "Failed to open file" << std::endl;
-        return;
-    }
-
-    inputStr: std::string = ();
-    lines : std::vector<std::string> = ();
-    energizedGridTemplate: std::vector<std::vector<Direction>> = ();
-    while (input.getline(inputStr)) {
-        lines.push_back(move inputStr);
-
-        powerLine: std::vector<Direction> = ();
-        powerLine.resize(lines[0].size(), Direction::None);
-        energizedGridTemplate.push_back(move powerLine);
-    }
-
-    maxEnergizedPlots : uint64_t = 0u;
-
-    // Top and bottom
-    for std::views::iota(0u, lines[0].size()) do (cellIndex) {
-        topEnergy := getTotalEnegery(lines&*, debugLog, Direction::Down, cellIndex, 0, energizedGridTemplate);
-        bottomEnergy := getTotalEnegery(lines&*, debugLog, Direction::Up, cellIndex, lines.size() - 1, energizedGridTemplate);
-    
-        maxEnergizedPlots = std::max(maxEnergizedPlots, topEnergy);
-        maxEnergizedPlots = std::max(maxEnergizedPlots, bottomEnergy);
-    }
-
-    // Left and right
-    for std::views::iota(0u, lines.size()) do (lineIndex) {
-        rightEnergy := getTotalEnegery(lines&*, debugLog, Direction::Right, 0, lineIndex, energizedGridTemplate);
-        leftEnergy := getTotalEnegery(lines&*, debugLog, Direction::Left, lines[lineIndex].size() - 1, lineIndex, energizedGridTemplate);
-    
-        maxEnergizedPlots = std::max(maxEnergizedPlots, rightEnergy);
-        maxEnergizedPlots = std::max(maxEnergizedPlots, leftEnergy);
-    }
-    
-
-    std::cout << "Part 2: " << maxEnergizedPlots << std::endl;
+    std::cout << "Part 2: " << "n/a" << std::endl;
 }
 
 main: () -> int = {
-    part1(false);
+    part1(true);
     part2(false);
 
     return 0;
