@@ -6,7 +6,7 @@ Operation : @enum type = {
 
 Instruction : @struct type = {
     op: Operation = Operation::None;
-    value: int64_t = 0;
+    value: uint64_t = 0;
     category: char = 0;
     destination: std::string = ();
     debug: std::string = ();
@@ -75,8 +75,8 @@ parseInstructionSet: (inputStr: std::string) -> InstructionSet = {
 }
 
 // {x=787,m=2655,a=1222,s=2876}
-parsePartDefinition: (inputStr: std::string) -> std::unordered_map<char, int64_t> = {
-    result: std::unordered_map<char, int64_t> = ();
+parsePartDefinition: (inputStr: std::string) -> std::unordered_map<char, uint64_t> = {
+    result: std::unordered_map<char, uint64_t> = ();
 
     ss := std::stringstream();
     ss << inputStr.substr(1, inputStr.size() - 2);
@@ -89,7 +89,7 @@ parsePartDefinition: (inputStr: std::string) -> std::unordered_map<char, int64_t
     return result;
 }
 
-isPartAccepted: (inout part: const std::unordered_map<char, int64_t>, inout instructions: const std::unordered_map<std::string, InstructionSet>) -> bool = {
+isPartAccepted: (inout part: const std::unordered_map<char, uint64_t>, inout instructions: const std::unordered_map<std::string, InstructionSet>) -> bool = {
     nextInstruction := instructions.at("in");
 
     while nextInstruction.name != "A" && nextInstruction.name != "R" {
@@ -121,6 +121,39 @@ isPartAccepted: (inout part: const std::unordered_map<char, int64_t>, inout inst
     return nextInstruction.name == "A";
 }
 
+findValidCombinations: (inout currentInstruction: const InstructionSet, validRanges: std::unordered_map<char, std::pair<uint64_t, uint64_t>>, inout instructions: const std::unordered_map<std::string, InstructionSet>) -> uint64_t = {
+    // TODO: Base case
+    if currentInstruction.name == "A" {
+        remainingCombos : uint64_t = 1u;
+        for validRanges do (combo) {
+            remainingCombos *= combo.second.second - combo.second.first;
+        }
+        return remainingCombos;
+    } else if  currentInstruction.name == "R" {
+        return 0;
+    }
+
+    result : uint64_t = 0;
+    modifiedRange := validRanges;
+    for currentInstruction.instructions do (instruction) {
+        tmp := modifiedRange;
+        if instruction.op == Operation::LessThan {
+            tmp[instruction.category] = std::make_pair(std::min(tmp[instruction.category].first, instruction.value), std::min(tmp[instruction.category].second, instruction.value));
+            modifiedRange[instruction.category] = std::make_pair(std::max(modifiedRange[instruction.category].first, instruction.value), std::max(modifiedRange[instruction.category].second, instruction.value));
+        } else if instruction.op == Operation::GreaterThan {
+            tmp[instruction.category] = std::make_pair(std::max(tmp[instruction.category].first, instruction.value), std::max(tmp[instruction.category].second, instruction.value));
+            modifiedRange[instruction.category] = std::make_pair(std::min(modifiedRange[instruction.category].first, instruction.value), std::min(modifiedRange[instruction.category].second, instruction.value));
+        }
+
+        result += findValidCombinations(instructions.at(instruction.destination), tmp, instructions);
+    }
+
+    // Didn't match any critera
+    result += findValidCombinations(instructions.at(currentInstruction.destination), modifiedRange, instructions);
+
+    return result;
+}
+
 part1: (debugLog: bool) = {
     input: std::ifstream = std::ifstream("inputs/day19.txt");
     if (!input.is_open()) {
@@ -130,7 +163,7 @@ part1: (debugLog: bool) = {
 
     inputStr: std::string = ();
     instructions : std::unordered_map<std::string, InstructionSet> = ();
-    definitions : std::vector<std::unordered_map<char, int64_t>> = ();
+    definitions : std::vector<std::unordered_map<char, uint64_t>> = ();
 
     isParsingDefinitions := false;
     while (input.getline(inputStr)) {
@@ -170,7 +203,42 @@ part1: (debugLog: bool) = {
 }
 
 part2: (debugLog: bool) = {
-    std::cout << "Part 2: " << "n/a" << std::endl;
+    input: std::ifstream = std::ifstream("inputs/day19_debug1.txt");
+    if (!input.is_open()) {
+        std::cout << "Failed to open file" << std::endl;
+        return;
+    }
+
+    inputStr: std::string = ();
+    instructions : std::unordered_map<std::string, InstructionSet> = ();
+
+    while (input.getline(inputStr)) {
+        if inputStr.empty() {
+            break;
+        }
+
+        instructionSet := parseInstructionSet(move inputStr);
+        instructions[instructionSet.name] = instructionSet;
+    }
+
+    // End points
+    acceptedInstruction := InstructionSet();
+    acceptedInstruction.name = "A";
+    rejectedInstruction := InstructionSet();
+    rejectedInstruction.name = "R";
+
+    instructions[acceptedInstruction.name] = (move acceptedInstruction);
+    instructions[rejectedInstruction.name] = (move rejectedInstruction);
+
+    validRanges := std::unordered_map<char, std::pair<uint64_t, uint64_t>>();
+    validRanges['x'] = std::make_pair(1u, 4000u);
+    validRanges['m'] = std::make_pair(1u, 4000u);
+    validRanges['a'] = std::make_pair(1u, 4000u);
+    validRanges['s'] = std::make_pair(1u, 4000u);
+
+    totalAccepted := findValidCombinations(instructions.at("in"), validRanges, instructions);
+
+    std::cout << "Part 2: " << totalAccepted << std::endl;
 }
 
 main: () -> int = {
