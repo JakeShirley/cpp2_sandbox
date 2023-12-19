@@ -8,6 +8,6 @@ add_subdirectory(src_deps/cppfront_cmake)
 # cppfront flags
 # -p - "Pure" cpp2, disable cpp1 mixing
 # -format-colon-errors - Emit ':line:col:' format for messages 
-set(CPPFRONT_FLAGS "-p" "-format-colon-errors")
+set(CPPFRONT_FLAGS "-p" "-format-colon-errors" "-no-subscript-checks")
 
 add_executable(main src/main.cpp2)
