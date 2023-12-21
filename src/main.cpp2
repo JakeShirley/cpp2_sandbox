@@ -1,264 +1,355 @@
-Operation : @enum type = {
-    None;
-    LessThan;
-    GreaterThan;
-}
+parseConnectionList: (input: std::string) -> std::vector<std::string> = {
+    result: std::vector<std::string> = ();
 
-Instruction : @struct type = {
-    op: Operation = Operation::None;
-    value: uint64_t = 0;
-    category: char = 0;
-    destination: std::string = ();
-    debug: std::string = ();
-}
+    rawDestinations : std::stringstream = input.substr(input.find('>') + 1);
+    rawDestinations.good(); // linter
+    rawDestination := std::string();
 
-InstructionSet : @struct type = {
-    instructions: std::vector<Instruction> = ();
-    destination: std::string = ();
-    name: std::string = ();
-    debug: std::string = ();
-}
-
-// a<2006:qkq
-parseInstruction: (inputStr: std::string) -> Instruction = {
-    instruction: Instruction = ();
-
-    colonPos := inputStr.find_first_of(':');
-
-    instruction.destination = inputStr.substr(colonPos + 1);
-
-    rawOp := inputStr.substr(0, colonPos);
-    instruction.category = rawOp[0];
-
-    if rawOp[1] == '<' {
-        instruction.op = Operation::LessThan;
-    } else if rawOp[1] == '>' {
-        instruction.op = Operation::GreaterThan;
-    } else {
-        std::cout << "Unknown operation: " << rawOp[1] << std::endl;
-    }
-
-    instruction.value = std::stoi(rawOp.substr(2));
-
-    instruction.debug = (move inputStr);
-
-    return instruction;
-}
-
-// hdj{m>838:A,pv}
-parseInstructionSet: (inputStr: std::string) -> InstructionSet = {
-    instructionSet: InstructionSet = ();
-
-    curlyOpen := inputStr.find_first_of('{');
-    curlyClose := inputStr.find_first_of('}');
-
-    instructionSet.name = inputStr.substr(0, curlyOpen);
-
-    instructionsRaw := inputStr.substr(curlyOpen + 1, curlyClose - curlyOpen - 1);
-
-    ss := std::stringstream();
-    ss << instructionsRaw;
-
-    instructionRaw := std::string();
-    while (std::getline(ss, instructionRaw, ',')) {
-        colonPos := instructionRaw.find_first_of(':');
-        if colonPos == std::string::npos {
-            instructionSet.destination = instructionRaw.substr(colonPos + 1);
-            continue;
+    while rawDestinations.getline(rawDestination, ',') {
+        while rawDestination[0] == ' ' {
+            rawDestination.erase(0, 1);
         }
-        instructionSet.instructions.push_back(parseInstruction(move instructionRaw));
-    }
-
-    instructionSet.debug = (move inputStr);
-
-    return instructionSet;
-}
-
-// {x=787,m=2655,a=1222,s=2876}
-parsePartDefinition: (inputStr: std::string) -> std::unordered_map<char, uint64_t> = {
-    result: std::unordered_map<char, uint64_t> = ();
-
-    ss := std::stringstream();
-    ss << inputStr.substr(1, inputStr.size() - 2);
-
-    instructionRaw := std::string();
-    while (std::getline(ss, instructionRaw, ',')) {
-        result[instructionRaw[0]] = std::stoi(instructionRaw.substr(2));
+        result.push_back(rawDestination);
     }
 
     return result;
 }
 
-isPartAccepted: (inout part: const std::unordered_map<char, uint64_t>, inout instructions: const std::unordered_map<std::string, InstructionSet>) -> bool = {
-    nextInstruction := instructions.at("in");
+MachineNode: @interface type = {
+    activate: (inout this, inout queue: SignalQueue, inout from: const std::shared_ptr<MachineNode>, signal: bool); // false = low, true = high
+    resolveNodes: (inout this, inout self: const std::shared_ptr<MachineNode>, inout nodes: std::vector<std::shared_ptr<MachineNode>>);
+    linkedFrom: (inout this, inout other: const std::shared_ptr<MachineNode>);
+    getName: (this) -> std::string;
+}
 
-    while nextInstruction.name != "A" && nextInstruction.name != "R" {
-        foundNextInstruction := false;
+FlipFlopNode: type = {
+    this:    MachineNode = ();
+    debug: std::string = ();
+    self: std::shared_ptr<MachineNode> = ();
 
-        currentInstuctions: for nextInstruction.instructions do (instruction) {
-            if instruction.op == Operation::LessThan {
-                if part.at(instruction.category) < instruction.value {
-                    nextInstruction = instructions.at(instruction.destination);
-                    foundNextInstruction = true;
-                    break currentInstuctions;
+    name: std::string = ();
+    isOn: bool = false;
+
+    connectedNodesNames: std::vector<std::string> = ();
+    connectedNodes: std::vector<std::shared_ptr<MachineNode>> = ();
+
+    operator=: (out this, input: std::string) = {
+        name = input.substr(1, input.find(' ') - 1);
+
+        rawDestinations : std::string = input.substr(input.find('>') + 1);
+        connectedNodesNames = parseConnectionList(rawDestinations);
+
+        debug = (move input);
+    }
+
+    getName: (override this) -> std::string = name;
+
+    activate: (override inout this, inout queue: SignalQueue, inout from: const std::shared_ptr<MachineNode>, signal: bool) = { // false = low, true = high
+        //std::cout << "FlipFlip activated: (signal)$" << std::endl;
+
+        // Do nothing on high signals
+        if signal == true {
+            return;
+        }
+
+        isOn = !isOn;
+
+        for connectedNodes do (node) {
+            queue.queue(self&*, node&*, isOn);
+        }
+    }
+
+    resolveNodes: (override inout this, inout selfPtr: const std::shared_ptr<MachineNode>, inout nodes: std::vector<std::shared_ptr<MachineNode>>) = {
+        self = selfPtr;
+        for connectedNodesNames do (connectedNodeName) {
+            nodePtrs: for nodes do (node) {
+                if (node*.getName() == connectedNodeName) {
+                    node*.linkedFrom(self);
+                    connectedNodes.push_back(node);
+                    break nodePtrs;
                 }
-            } else if instruction.op == Operation::GreaterThan {
-                if part.at(instruction.category) > instruction.value {
-                    nextInstruction = instructions.at(instruction.destination);
-                    foundNextInstruction = true;
-                    break currentInstuctions;
-                }
-            } else {
-                std::cout << "Unknown operation: " << instruction.op.get_raw_value() << std::endl;
+            }
+        }
+        assert(connectedNodesNames.size() == connectedNodes.size());
+    }
+
+    linkedFrom: (override inout this, inout other: const std::shared_ptr<MachineNode>) = {
+    }
+}
+
+ConjunctionNode: type = {
+    this:    MachineNode = ();
+    debug: std::string = ();
+
+    name: std::string = ();
+    self: std::shared_ptr<MachineNode> = ();
+
+    inputs : std::unordered_map<std::string, bool> = ();
+
+    connectedNodesNames: std::vector<std::string> = ();
+    connectedNodes: std::vector<std::shared_ptr<MachineNode>> = ();
+
+    operator=: (out this, input: std::string) = {
+        name = input.substr(1, input.find(' ') - 1);
+
+        rawDestinations : std::string = input.substr(input.find('>') + 1);
+        connectedNodesNames = parseConnectionList(rawDestinations);
+
+        debug = (move input);
+    }
+
+    getName: (override this) -> std::string = name;
+
+    linkedFrom: (override inout this, inout other: const std::shared_ptr<MachineNode>) = {
+        otherName := other*.getName();
+        inputs[otherName] = false;
+    }
+
+    activate: (override inout this, inout queue: SignalQueue, inout from: const std::shared_ptr<MachineNode>, signal: bool) = { // false = low, true = high
+        //std::cout << "ConjunctionNode activated: (signal)$" << std::endl;
+        fromName := from*.getName();
+        inputs[fromName] = signal;
+
+        allInputsHigh := true;
+        for inputs do (input) {
+            if input.second == false {
+                allInputsHigh = false;
+                break;
             }
         }
 
-        if !foundNextInstruction {
-            nextInstruction = instructions.at(nextInstruction.destination);
+        for connectedNodes do (node) {
+            queue.queue(self&*, node&*, !allInputsHigh);
         }
     }
 
-    return nextInstruction.name == "A";
+    resolveNodes: (override inout this, inout selfPtr: const std::shared_ptr<MachineNode>, inout nodes: std::vector<std::shared_ptr<MachineNode>>) = {
+        self = selfPtr;
+        for connectedNodesNames do (connectedNodeName) {
+            nodePtrs: for nodes do (node) {
+                if (node*.getName() == connectedNodeName) {
+                    node*.linkedFrom(self);
+                    connectedNodes.push_back(node);
+                    break nodePtrs;
+                }
+            }
+        }
+        assert(connectedNodesNames.size() == connectedNodes.size());
+    }
 }
 
-printRanges: (ranges: std::unordered_map<char, std::pair<uint64_t, uint64_t>>) = {
-    for ranges do (range) {
-        std::cout << "(" << range.first << ", " << range.second.first << "-" << range.second.second << ")";
+BroadcastNode: type = {
+    this:    MachineNode = ();
+    debug: std::string = ();
+    name: std::string = ();
+    self: std::shared_ptr<MachineNode> = ();
+
+    connectedNodesNames: std::vector<std::string> = ();
+    connectedNodes: std::vector<std::shared_ptr<MachineNode>> = ();
+
+    operator=: (out this, input: std::string) = {
+        name = "broadcaster";
+
+        rawDestinations : std::string = input.substr(input.find('>') + 1);
+        connectedNodesNames = parseConnectionList(rawDestinations);
+
+        debug = (move input);
+    }
+
+    getName: (override this) -> std::string = name;
+
+    activate: (override inout this, inout queue: SignalQueue, inout from: const std::shared_ptr<MachineNode>, signal: bool) = { // false = low, true = high
+        //std::cout << "Broadcaster activated: (signal)$" << std::endl;
+        for connectedNodes do (node) {
+            queue.queue(self&*, node&*, signal);
+        }
+    }
+
+    resolveNodes: (override inout this, inout selfPtr: const std::shared_ptr<MachineNode>, inout nodes: std::vector<std::shared_ptr<MachineNode>>) = {
+        self = selfPtr;
+        for connectedNodesNames do (connectedNodeName) {
+            nodePtrs: for nodes do (node) {
+                if (node*.getName() == connectedNodeName) {
+                    node*.linkedFrom(self);
+                    connectedNodes.push_back(node);
+                    break nodePtrs;
+                }
+            }
+        }
+        assert(connectedNodesNames.size() == connectedNodes.size());
+    }
+
+    linkedFrom: (override inout this, inout other: const std::shared_ptr<MachineNode>) = {
     }
 }
 
-findValidCombinations: (inout currentInstruction: const InstructionSet, validRanges: std::unordered_map<char, std::pair<uint64_t, uint64_t>>, inout instructions: const std::unordered_map<std::string, InstructionSet>) -> uint64_t = {
-    // TODO: Base case
-    if currentInstruction.name == "A" {
-        remainingCombos : uint64_t = 1u;
-        for validRanges do (combo) {
-            remainingCombos *= combo.second.second - combo.second.first + 1;
-        }
-        return remainingCombos;
-    } else if  currentInstruction.name == "R" {
-        return 0;
+ButtonNode: type = {
+    this:    MachineNode = ();
+    name: std::string = ();
+    self: std::shared_ptr<MachineNode> = ();
+
+    connectedNodesNames: std::vector<std::string> = ();
+    connectedNodes: std::vector<std::shared_ptr<MachineNode>> = ();
+
+    operator=: (out this) = {
+        name = "button";
+        connectedNodesNames.push_back("broadcaster");
     }
 
-    result : uint64_t = 0;
-    modifiedRange := validRanges;
-    for currentInstruction.instructions do (instruction) {
-        tmp := modifiedRange;
-        if instruction.op == Operation::LessThan {
-            tmp[instruction.category] = std::make_pair(
-                std::min(tmp[instruction.category].first, instruction.value - 1), 
-                std::min(tmp[instruction.category].second, instruction.value - 1)
-            );
+    getName: (override this) -> std::string = name;
 
-            modifiedRange[instruction.category] = std::make_pair(
-                std::max(modifiedRange[instruction.category].first, instruction.value), 
-                std::max(modifiedRange[instruction.category].second, instruction.value)
-            );
-        } else if instruction.op == Operation::GreaterThan {
-            tmp[instruction.category] = std::make_pair(
-                std::max(tmp[instruction.category].first, instruction.value + 1), 
-                std::max(tmp[instruction.category].second, instruction.value + 1)
-            );
-
-            modifiedRange[instruction.category] = std::make_pair(
-                std::min(modifiedRange[instruction.category].first, instruction.value), 
-                std::min(modifiedRange[instruction.category].second, instruction.value)
-            );
+    activate: (override inout this, inout queue: SignalQueue, inout from: const std::shared_ptr<MachineNode>, signal: bool) = { // false = low, true = high
+        //std::cout << "Button activated: (signal)$" << std::endl;
+        for connectedNodes do (node) {
+            queue.queue(self, node, false);
         }
-
-        result += findValidCombinations(instructions.at(instruction.destination), tmp, instructions);
     }
 
-    // Didn't match any critera
-    result += findValidCombinations(instructions.at(currentInstruction.destination), modifiedRange, instructions);
+    resolveNodes: (override inout this, inout selfPtr: const std::shared_ptr<MachineNode>, inout nodes: std::vector<std::shared_ptr<MachineNode>>) = {
+        self = selfPtr;
+        for connectedNodesNames do (connectedNodeName) {
+            nodePtrs: for nodes do (node) {
+                if (node*.getName() == connectedNodeName) {
+                    node*.linkedFrom(self);
+                    connectedNodes.push_back(node);
+                    break nodePtrs;
+                }
+            }
+        }
 
-    return result;
+        assert(connectedNodesNames.size() == connectedNodes.size());
+    }
+
+    linkedFrom: (override inout this, inout other: const std::shared_ptr<MachineNode>) = {
+    }
+}
+
+OutputNode: type = {
+    this:    MachineNode = ();
+    name: std::string = ();
+    self: std::shared_ptr<MachineNode> = ();
+    count: uint64_t = 0;
+
+    operator=: (out this, name2: std::string) = {
+        name = (move name2);
+    }
+
+    getName: (override this) -> std::string = name;
+
+    activate: (override inout this, inout queue: SignalQueue, inout from: const std::shared_ptr<MachineNode>, signal: bool) = { // false = low, true = high
+        count++;
+    }
+
+    resolveNodes: (override inout this, inout selfPtr: const std::shared_ptr<MachineNode>, inout nodes: std::vector<std::shared_ptr<MachineNode>>) = {
+    }
+
+    linkedFrom: (override inout this, inout other: const std::shared_ptr<MachineNode>) = {
+    }
+}
+
+Signal : @value type = {
+    public signal: bool = false;
+    public from : std::shared_ptr<MachineNode> = ();
+    public to : std::shared_ptr<MachineNode> = ();
+}
+
+SignalQueue : type = {
+    signalQueue: std::vector<Signal> = ();
+
+    public pulseCounts : std::unordered_map<bool, uint64_t> = ();
+
+    queue: (inout this, inout from: const std::shared_ptr<MachineNode>, inout to: const std::shared_ptr<MachineNode>, signal: bool) = {
+        signalEntry := Signal();
+        signalEntry.from = from;
+        signalEntry.to = to;
+        signalEntry.signal = signal;
+
+        signalQueue.push_back(move signalEntry);
+    }
+
+    pop: (inout this) -> Signal = {
+        result := signalQueue[0];
+        signalQueue.erase(signalQueue.begin());
+        return result;
+    }
+
+    empty: (this) -> bool = {
+        return signalQueue.empty();
+    }
+
+    processUntilEmpty: (inout this) = {
+        while (!empty()) {
+            currentSignal := pop();
+
+            pulseCounts[currentSignal.signal] += 1;
+
+            // button -low-> broadcaster
+            signalType := std::string();
+            if currentSignal.signal {
+                signalType = "high";
+            } else {
+                signalType = "low";
+            }
+
+            //std::cout << currentSignal.from*.getName() << " -" << signalType << "-> " << currentSignal.to*.getName() << std::endl;
+
+            currentSignal.to*.activate(this, currentSignal.from, currentSignal.signal);
+        }
+    }
 }
 
 part1: (debugLog: bool) = {
-    input: std::ifstream = std::ifstream("inputs/day19.txt");
+    input: std::ifstream = std::ifstream("inputs/day20.txt");
     if (!input.is_open()) {
         std::cout << "Failed to open file" << std::endl;
         return;
     }
 
     inputStr: std::string = ();
-    instructions : std::unordered_map<std::string, InstructionSet> = ();
-    definitions : std::vector<std::unordered_map<char, uint64_t>> = ();
-
-    isParsingDefinitions := false;
+    nodes : std::vector<std::shared_ptr<MachineNode>> = ();
     while (input.getline(inputStr)) {
-        if inputStr.empty() {
-            isParsingDefinitions = true;
-            continue;
-        }
-
-        if isParsingDefinitions {
-            definitions.push_back(parsePartDefinition(move inputStr));
-        } else {
-            instructionSet := parseInstructionSet(move inputStr);
-            instructions[instructionSet.name] = instructionSet;
+        if inputStr[0] == '%' {
+            nodes.push_back(new<FlipFlopNode>(move inputStr));
+        } else if inputStr[0] == '&' {
+            nodes.push_back(new<ConjunctionNode>(move inputStr));
+        } else if inputStr.find("broadcaster") == 0 {
+            nodes.push_back(new<BroadcastNode>(move inputStr));
         }
     }
 
-    // End points
-    acceptedInstruction := InstructionSet();
-    acceptedInstruction.name = "A";
-    rejectedInstruction := InstructionSet();
-    rejectedInstruction.name = "R";
-
-    instructions[acceptedInstruction.name] = (move acceptedInstruction);
-    instructions[rejectedInstruction.name] = (move rejectedInstruction);
-
-    totalAccepted: uint64_t = 0;
-    for std::views::iota(0u, definitions.size()) do (i) {
-        isAccepted := isPartAccepted(definitions[i], instructions);
-        if isAccepted {
-            for definitions[i] do (partPair) {
-                totalAccepted += partPair.second;
-            }
+    broadcasterNode: std::shared_ptr<MachineNode> = ();
+    for nodes do (node) {
+        if (node*.getName() == "broadcaster") {
+            broadcasterNode = node;
+            break;
         }
     }
 
-    std::cout << "Part 1: " << totalAccepted << std::endl;
+    buttonNode := std::make_shared<ButtonNode>();
+    nodes.push_back(buttonNode);
+
+    nodes.push_back(std::make_shared<OutputNode>("output"));
+    nodes.push_back(std::make_shared<OutputNode>("rx"));
+
+    // Resolve nodes
+    for nodes do (node) {
+        node*.resolveNodes(node, nodes);
+    }
+
+    queue := SignalQueue();
+
+    for std::views::iota(0u, 1000u) do (i) {
+        std::cout << "Press " << i << ":" << std::endl;
+        buttonNode*.activate(queue, buttonNode, false);
+        queue&*.processUntilEmpty();
+        std::cout << std::endl;
+    }
+
+    std::cout << "Part 1: " << queue.pulseCounts[false] * queue.pulseCounts[true] << std::endl;
 }
 
 part2: (debugLog: bool) = {
-    input: std::ifstream = std::ifstream("inputs/day19.txt");
-    if (!input.is_open()) {
-        std::cout << "Failed to open file" << std::endl;
-        return;
-    }
-
-    inputStr: std::string = ();
-    instructions : std::unordered_map<std::string, InstructionSet> = ();
-
-    while (input.getline(inputStr)) {
-        if inputStr.empty() {
-            break;
-        }
-
-        instructionSet := parseInstructionSet(move inputStr);
-        instructions[instructionSet.name] = instructionSet;
-    }
-
-    // End points
-    acceptedInstruction := InstructionSet();
-    acceptedInstruction.name = "A";
-    rejectedInstruction := InstructionSet();
-    rejectedInstruction.name = "R";
-
-    instructions[acceptedInstruction.name] = (move acceptedInstruction);
-    instructions[rejectedInstruction.name] = (move rejectedInstruction);
-
-    validRanges := std::unordered_map<char, std::pair<uint64_t, uint64_t>>();
-    validRanges['x'] = std::make_pair(1u, 4000u);
-    validRanges['m'] = std::make_pair(1u, 4000u);
-    validRanges['a'] = std::make_pair(1u, 4000u);
-    validRanges['s'] = std::make_pair(1u, 4000u);
-
-    totalAccepted := findValidCombinations(instructions.at("in"), validRanges, instructions);
-
-    std::cout << "Part 2: " << totalAccepted << std::endl;
+    std::cout << "Part 2: " << "n/a" << std::endl;
 }
 
 main: () -> int = {
