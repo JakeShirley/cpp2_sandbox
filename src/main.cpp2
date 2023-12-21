@@ -1,432 +1,169 @@
-parseConnectionList: (input: std::string) -> std::vector<std::string> = {
-    result: std::vector<std::string> = ();
+Location: @value type = {
+    public x: int64_t = 0;
+    public y: int64_t = 0;
 
-    rawDestinations : std::stringstream = input.substr(input.find('>') + 1);
-    rawDestinations.good(); // linter
-    rawDestination := std::string();
-
-    while rawDestinations.getline(rawDestination, ',') {
-        while rawDestination[0] == ' ' {
-            rawDestination.erase(0, 1);
-        }
-        result.push_back(rawDestination);
-    }
-
-    return result;
-}
-
-MachineNode: @interface type = {
-    activate: (inout this, inout queue: SignalQueue, inout from: const std::shared_ptr<MachineNode>, signal: bool); // false = low, true = high
-    resolveNodes: (inout this, inout self: const std::shared_ptr<MachineNode>, inout nodes: std::vector<std::shared_ptr<MachineNode>>);
-    linkedFrom: (inout this, inout other: const std::shared_ptr<MachineNode>);
-    getName: (this) -> std::string;
-}
-
-FlipFlopNode: type = {
-    this:    MachineNode = ();
-    debug: std::string = ();
-    self: std::shared_ptr<MachineNode> = ();
-
-    name: std::string = ();
-    isOn: bool = false;
-
-    connectedNodesNames: std::vector<std::string> = ();
-    connectedNodes: std::vector<std::shared_ptr<MachineNode>> = ();
-
-    operator=: (out this, input: std::string) = {
-        name = input.substr(1, input.find(' ') - 1);
-
-        rawDestinations : std::string = input.substr(input.find('>') + 1);
-        connectedNodesNames = parseConnectionList(rawDestinations);
-
-        debug = (move input);
-    }
-
-    getName: (override this) -> std::string = name;
-
-    activate: (override inout this, inout queue: SignalQueue, inout from: const std::shared_ptr<MachineNode>, signal: bool) = { // false = low, true = high
-        //std::cout << "FlipFlip activated: (signal)$" << std::endl;
-
-        // Do nothing on high signals
-        if signal == true {
-            return;
-        }
-
-        isOn = !isOn;
-
-        for connectedNodes do (node) {
-            queue.queue(self&*, node&*, isOn);
-        }
-    }
-
-    resolveNodes: (override inout this, inout selfPtr: const std::shared_ptr<MachineNode>, inout nodes: std::vector<std::shared_ptr<MachineNode>>) = {
-        self = selfPtr;
-        for connectedNodesNames do (connectedNodeName) {
-            nodePtrs: for nodes do (node) {
-                if (node*.getName() == connectedNodeName) {
-                    node*.linkedFrom(self);
-                    connectedNodes.push_back(node);
-                    break nodePtrs;
-                }
-            }
-        }
-        assert(connectedNodesNames.size() == connectedNodes.size());
-    }
-
-    linkedFrom: (override inout this, inout other: const std::shared_ptr<MachineNode>) = {
+    operator=:(out this, x_: int64_t, y_: int64_t) = {
+        x = x_;
+        y = y_;
     }
 }
 
-ConjunctionNode: type = {
-    this:    MachineNode = ();
-    debug: std::string = ();
-
-    name: std::string = ();
-    self: std::shared_ptr<MachineNode> = ();
-
-    inputs : std::unordered_map<std::string, bool> = ();
-
-    connectedNodesNames: std::vector<std::string> = ();
-    connectedNodes: std::vector<std::shared_ptr<MachineNode>> = ();
-
-    operator=: (out this, input: std::string) = {
-        name = input.substr(1, input.find(' ') - 1);
-
-        rawDestinations : std::string = input.substr(input.find('>') + 1);
-        connectedNodesNames = parseConnectionList(rawDestinations);
-
-        debug = (move input);
-    }
-
-    getName: (override this) -> std::string = name;
-
-    linkedFrom: (override inout this, inout other: const std::shared_ptr<MachineNode>) = {
-        otherName := other*.getName();
-        inputs[otherName] = false;
-    }
-
-    activate: (override inout this, inout queue: SignalQueue, inout from: const std::shared_ptr<MachineNode>, signal: bool) = { // false = low, true = high
-        //std::cout << "ConjunctionNode activated: (signal)$" << std::endl;
-        fromName := from*.getName();
-        inputs[fromName] = signal;
-
-        allInputsHigh := true;
-        for inputs do (input) {
-            if input.second == false {
-                allInputsHigh = false;
-                break;
-            }
-        }
-
-        for connectedNodes do (node) {
-            queue.queue(self&*, node&*, !allInputsHigh);
-        }
-    }
-
-    resolveNodes: (override inout this, inout selfPtr: const std::shared_ptr<MachineNode>, inout nodes: std::vector<std::shared_ptr<MachineNode>>) = {
-        self = selfPtr;
-        for connectedNodesNames do (connectedNodeName) {
-            nodePtrs: for nodes do (node) {
-                if (node*.getName() == connectedNodeName) {
-                    node*.linkedFrom(self);
-                    connectedNodes.push_back(node);
-                    break nodePtrs;
-                }
-            }
-        }
-        assert(connectedNodesNames.size() == connectedNodes.size());
-    }
-}
-
-BroadcastNode: type = {
-    this:    MachineNode = ();
-    debug: std::string = ();
-    name: std::string = ();
-    self: std::shared_ptr<MachineNode> = ();
-
-    connectedNodesNames: std::vector<std::string> = ();
-    connectedNodes: std::vector<std::shared_ptr<MachineNode>> = ();
-
-    operator=: (out this, input: std::string) = {
-        name = "broadcaster";
-
-        rawDestinations : std::string = input.substr(input.find('>') + 1);
-        connectedNodesNames = parseConnectionList(rawDestinations);
-
-        debug = (move input);
-    }
-
-    getName: (override this) -> std::string = name;
-
-    activate: (override inout this, inout queue: SignalQueue, inout from: const std::shared_ptr<MachineNode>, signal: bool) = { // false = low, true = high
-        //std::cout << "Broadcaster activated: (signal)$" << std::endl;
-        for connectedNodes do (node) {
-            queue.queue(self&*, node&*, signal);
-        }
-    }
-
-    resolveNodes: (override inout this, inout selfPtr: const std::shared_ptr<MachineNode>, inout nodes: std::vector<std::shared_ptr<MachineNode>>) = {
-        self = selfPtr;
-        for connectedNodesNames do (connectedNodeName) {
-            nodePtrs: for nodes do (node) {
-                if (node*.getName() == connectedNodeName) {
-                    node*.linkedFrom(self);
-                    connectedNodes.push_back(node);
-                    break nodePtrs;
-                }
-            }
-        }
-        assert(connectedNodesNames.size() == connectedNodes.size());
-    }
-
-    linkedFrom: (override inout this, inout other: const std::shared_ptr<MachineNode>) = {
-    }
-}
-
-ButtonNode: type = {
-    this:    MachineNode = ();
-    name: std::string = ();
-    self: std::shared_ptr<MachineNode> = ();
-
-    connectedNodesNames: std::vector<std::string> = ();
-    connectedNodes: std::vector<std::shared_ptr<MachineNode>> = ();
-
-    operator=: (out this) = {
-        name = "button";
-        connectedNodesNames.push_back("broadcaster");
-    }
-
-    getName: (override this) -> std::string = name;
-
-    activate: (override inout this, inout queue: SignalQueue, inout from: const std::shared_ptr<MachineNode>, signal: bool) = { // false = low, true = high
-        //std::cout << "Button activated: (signal)$" << std::endl;
-        for connectedNodes do (node) {
-            queue.queue(self, node, false);
-        }
-    }
-
-    resolveNodes: (override inout this, inout selfPtr: const std::shared_ptr<MachineNode>, inout nodes: std::vector<std::shared_ptr<MachineNode>>) = {
-        self = selfPtr;
-        for connectedNodesNames do (connectedNodeName) {
-            nodePtrs: for nodes do (node) {
-                if (node*.getName() == connectedNodeName) {
-                    node*.linkedFrom(self);
-                    connectedNodes.push_back(node);
-                    break nodePtrs;
-                }
-            }
-        }
-
-        assert(connectedNodesNames.size() == connectedNodes.size());
-    }
-
-    linkedFrom: (override inout this, inout other: const std::shared_ptr<MachineNode>) = {
-    }
-}
-
-OutputNode: type = {
-    this:    MachineNode = ();
-    name: std::string = ();
-    self: std::shared_ptr<MachineNode> = ();
-    public count: uint64_t = 0;
-
-    operator=: (out this, name2: std::string) = {
-        name = (move name2);
-    }
-
-    getName: (override this) -> std::string = name;
-
-    activate: (override inout this, inout queue: SignalQueue, inout from: const std::shared_ptr<MachineNode>, signal: bool) = { // false = low, true = high
-        count++;
-    }
-
-    resolveNodes: (override inout this, inout selfPtr: const std::shared_ptr<MachineNode>, inout nodes: std::vector<std::shared_ptr<MachineNode>>) = {
-    }
-
-    linkedFrom: (override inout this, inout other: const std::shared_ptr<MachineNode>) = {
-    }
-}
-
-Signal : @value type = {
-    public signal: bool = false;
-    public from : std::shared_ptr<MachineNode> = ();
-    public to : std::shared_ptr<MachineNode> = ();
-}
-
-SignalQueue : type = {
-    signalQueue: std::vector<Signal> = ();
-
-    public pulseCounts : std::unordered_map<bool, uint64_t> = ();
-
-    queue: (inout this, inout from: const std::shared_ptr<MachineNode>, inout to: const std::shared_ptr<MachineNode>, signal: bool) = {
-        signalEntry := Signal();
-        signalEntry.from = from;
-        signalEntry.to = to;
-        signalEntry.signal = signal;
-
-        signalQueue.push_back(move signalEntry);
-    }
-
-    pop: (inout this) -> Signal = {
-        result := signalQueue[0];
-        signalQueue.erase(signalQueue.begin());
-        return result;
-    }
-
-    empty: (this) -> bool = {
-        return signalQueue.empty();
-    }
-
-    processUntilEmpty: (inout this) = {
-        while (!empty()) {
-            currentSignal := pop();
-
-            pulseCounts[currentSignal.signal] += 1;
-
-            // button -low-> broadcaster
-            signalType := std::string();
-            if currentSignal.signal {
-                signalType = "high";
-            } else {
-                signalType = "low";
+printGrid: (inout grid: std::vector<std::string>, inout queue: std::vector<Location>) = {
+    for std::views::iota(0u, grid.size()) do (y) {
+        for std::views::iota(0u, grid[y].size()) do (x) {
+            locItr := std::find(queue.begin(), queue.end(), Location(x, y));
+            if locItr != queue.end() {
+                std::cout << 'O';
+                continue;
             }
 
-            //std::cout << currentSignal.from*.getName() << " -" << signalType << "-> " << currentSignal.to*.getName() << std::endl;
+            std::cout << grid[y][x];
+        }
+        std::cout << std::endl;
+    }
+}
 
-            currentSignal.to*.activate(this, currentSignal.from, currentSignal.signal);
+queueLocation: (inout grid: std::vector<std::string>, inout queue: std::vector<Location>, x: int64_t, y: int64_t) = {
+    // Walked into a rock
+    if grid[y][x] == '#' {
+        return;
+    }
+
+    // Walked off the edge
+    if x < 0 || x >= cpp2::unsafe_narrow<int64_t>(grid[0].size()) || y < 0 || y >= cpp2::unsafe_narrow<int64_t>(grid.size()) {
+        return;
+    }
+
+    locItr := std::find(queue.begin(), queue.end(), Location(x, y));
+    if locItr == queue.end() {
+        queue.push_back(Location(x, y));
+    }
+}
+
+queueLocationInfinite: (inout grid: std::vector<std::string>, inout queue: std::vector<Location>, x: int64_t, y: int64_t) = {
+    actualX =: x % cpp2::unsafe_narrow<int64_t>(grid[0].size());
+    actualY =: y % cpp2::unsafe_narrow<int64_t>(grid.size());
+
+    // Walked into a rock
+    if grid[actualX][actualY] == '#' {
+        return;
+    }
+
+    locItr := std::find(queue.begin(), queue.end(), Location(x, y));
+    if locItr == queue.end() {
+        queue.push_back(Location(x, y));
+    }
+}
+
+walkGarden: (inout grid: std::vector<std::string>, steps: int64_t, startX: int64_t, startY: int64_t) -> uint64_t = {
+
+    locationQueue: std::vector<Location> = ();
+    locationQueue.push_back(Location(startX, startY));
+
+    stepsLeft := steps;
+
+    while stepsLeft >= 0 {
+        currentQueue := (move locationQueue);
+        stepsLeft -= 1;
+
+        //printGrid(grid, currentQueue&*);
+        //std::cout << std::endl;
+
+        for currentQueue do (location) {
+
+            queueLocation(grid, locationQueue, location.x + 1, location.y);
+            queueLocation(grid, locationQueue, location.x - 1, location.y);
+            queueLocation(grid, locationQueue, location.x, location.y + 1);
+            queueLocation(grid, locationQueue, location.x, location.y - 1);
         }
     }
+
+    return locationQueue.size();
+}
+
+
+walkGardenInfinite: (inout grid: std::vector<std::string>, steps: int64_t, startX: int64_t, startY: int64_t) -> uint64_t = {
+
+    locationQueue: std::vector<Location> = ();
+    locationQueue.push_back(Location(startX, startY));
+
+    stepsLeft := steps;
+
+    while stepsLeft >= 0 {
+        currentQueue := (move locationQueue);
+        stepsLeft -= 1;
+
+        //printGrid(grid, currentQueue&*);
+        //std::cout << std::endl;
+
+        for currentQueue do (location) {
+
+            queueLocation(grid, locationQueue, location.x + 1, location.y);
+            queueLocation(grid, locationQueue, location.x - 1, location.y);
+            queueLocation(grid, locationQueue, location.x, location.y + 1);
+            queueLocation(grid, locationQueue, location.x, location.y - 1);
+        }
+    }
+
+    return locationQueue.size();
 }
 
 part1: (debugLog: bool) = {
-    input: std::ifstream = std::ifstream("inputs/day20.txt");
+    input: std::ifstream = std::ifstream("inputs/day21.txt");
     if (!input.is_open()) {
         std::cout << "Failed to open file" << std::endl;
         return;
     }
 
     inputStr: std::string = ();
-    nodes : std::vector<std::shared_ptr<MachineNode>> = ();
+    lines : std::vector<std::string> = ();
+
     while (input.getline(inputStr)) {
-        if inputStr[0] == '%' {
-            nodes.push_back(new<FlipFlopNode>(move inputStr));
-        } else if inputStr[0] == '&' {
-            nodes.push_back(new<ConjunctionNode>(move inputStr));
-        } else if inputStr.find("broadcaster") == 0 {
-            nodes.push_back(new<BroadcastNode>(move inputStr));
+        lines.push_back(move inputStr);
+    }
+
+    startPosx : int64_t = 0;
+    startPosy : int64_t = 0;
+    for std::views::iota(0u, lines.size()) do(y) {
+        for std::views::iota(0u, lines[y].size()) do (x) {
+            if lines[y][x] == 'S' {
+                startPosx = x;
+                startPosy = y;
+            }
         }
     }
 
-    broadcasterNode: std::shared_ptr<MachineNode> = ();
-    for nodes do (node) {
-        if (node*.getName() == "broadcaster") {
-            broadcasterNode = node;
-            break;
-        }
-    }
-
-    buttonNode := std::make_shared<ButtonNode>();
-    nodes.push_back(buttonNode);
-
-    nodes.push_back(std::make_shared<OutputNode>("output"));
-    nodes.push_back(std::make_shared<OutputNode>("rx"));
-
-    // Resolve nodes
-    for nodes do (node) {
-        node*.resolveNodes(node, nodes);
-    }
-
-    queue := SignalQueue();
-
-    for std::views::iota(0u, 1000u) do (i) {
-        std::cout << "Press " << i << ":" << std::endl;
-        buttonNode*.activate(queue, buttonNode, false);
-        queue&*.processUntilEmpty();
-        std::cout << std::endl;
-    }
-
-    std::cout << "Part 1: " << queue.pulseCounts[false] * queue.pulseCounts[true] << std::endl;
+    gardens := walkGarden(lines&*, 63, startPosx, startPosy);
+    std::cout << "Part 1: " << gardens << std::endl;
 }
 
 part2: (debugLog: bool) = {
-    input: std::ifstream = std::ifstream("inputs/day20.txt");
+    input: std::ifstream = std::ifstream("inputs/day21_debug1.txt");
     if (!input.is_open()) {
         std::cout << "Failed to open file" << std::endl;
         return;
     }
 
     inputStr: std::string = ();
-    nodes : std::vector<std::shared_ptr<MachineNode>> = ();
+    lines : std::vector<std::string> = ();
+
     while (input.getline(inputStr)) {
-        if inputStr[0] == '%' {
-            nodes.push_back(new<FlipFlopNode>(move inputStr));
-        } else if inputStr[0] == '&' {
-            nodes.push_back(new<ConjunctionNode>(move inputStr));
-        } else if inputStr.find("broadcaster") == 0 {
-            nodes.push_back(new<BroadcastNode>(move inputStr));
-        }
+        lines.push_back(move inputStr);
     }
 
-    broadcasterNode: std::shared_ptr<MachineNode> = ();
-    for nodes do (node) {
-        if (node*.getName() == "broadcaster") {
-            broadcasterNode = node;
-            break;
-        }
-    }
-
-    buttonNode := std::make_shared<ButtonNode>();
-    nodes.push_back(buttonNode);
-
-    rxNode := std::make_shared<OutputNode>("rx");
-    nodes.push_back(rxNode);
-
-    // Resolve nodes
-    for nodes do (node) {
-        node*.resolveNodes(node, nodes);
-    }
-
-    queue := SignalQueue();
-
-    feedsIntoRx : std::string = "gf";
-    gfHighImplulses: std::unordered_map<std::string, uint64_t> = ();
-
-    buttonCount: uint64_t = 0;
-    while gfHighImplulses.size() < 4u {
-        buttonCount++;
-        buttonNode*.activate(queue, buttonNode, false);
-        
-        while (!queue.empty()) {
-            currentSignal := queue.pop();
-
-            // button -low-> broadcaster
-            signalType := std::string();
-            if currentSignal.signal {
-                signalType = "high";
-            } else {
-                signalType = "low";
+    startPosx : int64_t = 0;
+    startPosy : int64_t = 0;
+    for std::views::iota(0u, lines.size()) do(y) {
+        for std::views::iota(0u, lines[y].size()) do (x) {
+            if lines[y][x] == 'S' {
+                startPosx = x;
+                startPosy = y;
             }
-
-            currentSignalToName := currentSignal.to*.getName();
-            currentSignalFromName := currentSignal.from*.getName();
-            if currentSignalToName == feedsIntoRx {
-                if currentSignal.signal {
-                    if gfHighImplulses.find(currentSignalFromName) == gfHighImplulses.end() {
-                        gfHighImplulses[currentSignalFromName] = buttonCount;
-                    }
-                }
-            }
-
-            currentSignal.to*.activate(queue, currentSignal.from, currentSignal.signal);
         }
     }
 
-    lcm : uint64_t = 1;
-    for gfHighImplulses do (pair) {
-        lcm = std::lcm(lcm, pair.second);
-    }
-
-    std::cout << "Part 2: " << lcm << std::endl;
+    gardens := walkGarden(lines&*, 63, startPosx, startPosy);
+    std::cout << "Part 2: " << gardens << std::endl;
 }
 
 main: () -> int = {
